@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "176605386510",
+    "firebase_url": "https://fxz-music-default-rtdb.firebaseio.com",
+    "project_id": "fxz-music",
+    "storage_bucket": "fxz-music.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:176605386510:android:75e1380d921637c27ea95f",
+        "android_client_info": {
+          "package_name": "com.example.fxzmusic"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpZdlsQpV9YpFYFZMPf-hbetJg4sBEKPk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

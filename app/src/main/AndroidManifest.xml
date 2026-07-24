@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
@@ -31,16 +32,27 @@
         </activity>
 
         <service
-            android:name=".PlaybackService"
-            android:exported="false"
+            android:name=".service.PlaybackService"
+            android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
 
+        <service
+            android:name=".service.FxzDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync">
+            <intent-filter>
+                <action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" />
+                <action android:name="androidx.media3.exoplayer.downloadService.action.INIT" />
+           </intent-filter>
+       </service>
+
         <receiver
-            android:name=".BluetoothReceiver"
+            android:name=".service.BluetoothReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
@@ -48,12 +60,22 @@
         </receiver>
 
         <receiver
-            android:name=".MediaButtonReceiver"
+            android:name=".service.MediaButtonReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.example.fxzmusic.ACTION_RESUME" />
+                <action android:name="com.fxzmusic.app.ACTION_RESUME" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

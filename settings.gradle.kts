@@ -19,9 +19,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io")
     }
 }
 
 rootProject.name = "FxzMusic"
 include(":app")
+include(":innertube")
+include(":ytpipeline")
  

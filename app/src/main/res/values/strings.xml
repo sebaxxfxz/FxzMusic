@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">FxzMusic</string>
+    <string name="download_channel_name">Descargando canciones</string>
 </resources>

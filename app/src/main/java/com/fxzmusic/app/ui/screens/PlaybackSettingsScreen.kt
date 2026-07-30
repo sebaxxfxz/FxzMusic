@@ -11,6 +11,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.fxzmusic.innertube.models.IpVersion
 import kotlinx.coroutines.launch
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.graphics.Brush
 
 import androidx.compose.animation.AnimatedContent
@@ -69,6 +70,10 @@ fun PlaybackSettingsScreen(
     allSongs: List<Song> = emptyList()
 ) {
     var currentScreen by remember { mutableStateOf<SettingsScreen>(SettingsScreen.Main) }
+
+    BackHandler(enabled = currentScreen != SettingsScreen.Main) {
+        currentScreen = SettingsScreen.Main
+    }
 
     AnimatedContent(
         targetState   = currentScreen,
@@ -770,9 +775,9 @@ fun AboutAppCard(
     val context = LocalContext.current
     val currentVersion = remember(context) {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "3.0.0"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "3.1.0"
         } catch (_: Exception) {
-            "3.0.0"
+            "3.1.0"
         }
     }
 

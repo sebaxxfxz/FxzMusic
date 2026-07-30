@@ -58,14 +58,15 @@ import com.fxzmusic.app.ui.components.YouTubeSearchSuggestion
 import com.fxzmusic.app.ui.components.YouTubeSectionHeaderMejorado
 import com.fxzmusic.app.ui.components.YouTubeSongCard
 import com.fxzmusic.app.util.toLocalSong
+import androidx.activity.compose.BackHandler
 import com.fxzmusic.app.util.toSong
-import com.fxzmusic.app.viewmodel.SearchUiState
 import com.fxzmusic.app.viewmodel.YouTubeMusicViewModel
 import com.fxzmusic.innertube.YouTube
+import com.fxzmusic.innertube.models.SongItem
 import com.fxzmusic.innertube.models.AlbumItem
 import com.fxzmusic.innertube.models.ArtistItem
 import com.fxzmusic.innertube.models.PlaylistItem
-import com.fxzmusic.innertube.models.SongItem
+import com.fxzmusic.app.viewmodel.SearchUiState
 
 @Composable
 fun YouTubeSearchScreen(
@@ -81,13 +82,17 @@ fun YouTubeSearchScreen(
     var selectedFilter by remember { mutableStateOf<YouTube.SearchFilter?>(null) }
     var contextMenuSong by remember { mutableStateOf<SongItem?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        val currentQuery = when (state) {
-            is SearchUiState.Suggestions -> state.query
-            is SearchUiState.Success -> state.query
-            else -> ""
-        }
+    val currentQuery = when (state) {
+        is SearchUiState.Suggestions -> state.query
+        is SearchUiState.Success -> state.query
+        else -> ""
+    }
 
+    BackHandler(enabled = currentQuery.isNotBlank()) {
+        viewModel.cancelSearch()
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
         InteractiveSearchBar(
             value = currentQuery,
             onValueChange = { viewModel.updateQuery(it, selectedFilter) },

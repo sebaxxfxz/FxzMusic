@@ -23,13 +23,38 @@ data class AudioOutputDevice(
 
 class AudioOutputManager(private val context: Context) {
 
+    companion object {
+        var globalSelectedDeviceId by mutableStateOf<Int?>(null)
+        var globalSelectedDeviceType by mutableStateOf<Int?>(null)
+
+        private const val PREFS_NAME = "fxz_audio_output_prefs"
+        private const val KEY_DEVICE_ID = "selected_device_id"
+        private const val KEY_DEVICE_TYPE = "selected_device_type"
+
+        fun loadSavedRoute(context: Context) {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.contains(KEY_DEVICE_ID)) {
+                val id = prefs.getInt(KEY_DEVICE_ID, -1)
+                val type = prefs.getInt(KEY_DEVICE_TYPE, -1)
+                globalSelectedDeviceId = if (id != -1) id else null
+                globalSelectedDeviceType = if (type != -1) type else null
+            }
+        }
+
+        fun saveRoute(context: Context, deviceId: Int?, deviceType: Int?) {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                if (deviceId != null) putInt(KEY_DEVICE_ID, deviceId) else remove(KEY_DEVICE_ID)
+                if (deviceType != null) putInt(KEY_DEVICE_TYPE, deviceType) else remove(KEY_DEVICE_TYPE)
+            }.apply()
+        }
+    }
+
     var devices by mutableStateOf<List<AudioOutputDevice>>(emptyList())
         private set
 
     var connectedBtName by mutableStateOf<String?>(null)
         private set
-
-    private var selectedDeviceId by mutableStateOf<Int?>(null)
 
     private val audioManager = context.applicationContext
         .getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -38,6 +63,9 @@ class AudioOutputManager(private val context: Context) {
     private val REFRESH_DELAY_MS = 300L
 
     init {
+        if (globalSelectedDeviceId == null && globalSelectedDeviceType == null) {
+            loadSavedRoute(context)
+        }
         refresh()
     }
 
@@ -71,8 +99,8 @@ class AudioOutputManager(private val context: Context) {
                     @Suppress("DEPRECATION")
                     val isWired = audioManager.isWiredHeadsetOn
 
-                    val isCurrent = if (selectedDeviceId != null) {
-                        info.id == selectedDeviceId
+                    val isCurrent = if (globalSelectedDeviceId != null) {
+                        info.id == globalSelectedDeviceId || (globalSelectedDeviceType != null && info.type == globalSelectedDeviceType)
                     } else {
                         when {
                             isUsbc -> isWired
@@ -114,8 +142,24 @@ class AudioOutputManager(private val context: Context) {
         return current?.name ?: "Altavoz del teléfono"
     }
 
+    fun restoreSavedRoute() {
+        loadSavedRoute(context)
+        val targetId = globalSelectedDeviceId
+        val targetType = globalSelectedDeviceType
+        if (targetId != null || targetType != null) {
+            val dev = devices.firstOrNull { it.id == targetId }
+                ?: devices.firstOrNull { it.type == targetType }
+            if (dev != null) {
+                routeTo(dev)
+            }
+        }
+    }
+
     fun routeTo(device: AudioOutputDevice) {
-        selectedDeviceId = device.id
+        globalSelectedDeviceId = device.id
+        globalSelectedDeviceType = device.type
+        saveRoute(context, device.id, device.type)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)

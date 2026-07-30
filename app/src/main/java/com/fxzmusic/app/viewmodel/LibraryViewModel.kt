@@ -165,6 +165,7 @@ class LibraryViewModel : ViewModel() {
     }
 
     private fun registerContentObserver(context: Context) {
+        unregisterContentObserver(context)
         val handler = Handler(Looper.getMainLooper())
         contentObserver = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
@@ -348,25 +349,37 @@ class LibraryViewModel : ViewModel() {
         allSongs = allSongs.map { if (it.id == updated.id) updated else it }
     }
 
-    fun toggleLike(songId: String) {
-        allSongs = allSongs.map { song ->
-            if (song.id == songId) song.copy(isLiked = !song.isLiked) else song
+    fun toggleLike(songId: String, playingSong: Song? = null) {
+        val songInAll = allSongs.find { it.id == songId }
+        val newIsLiked = if (songInAll != null) {
+            !songInAll.isLiked
+        } else if (playingSong != null && playingSong.id == songId) {
+            !playingSong.isLiked
+        } else {
+            true
         }
-        val newIsLiked = allSongs.find { it.id == songId }?.isLiked ?: false
-        val song = allSongs.find { it.id == songId }
-        if (song != null) {
-            viewModelScope.launch(Dispatchers.IO) {
-                database?.songMetaDao()?.upsert(
-                    SongMetaEntity(
-                        songId = song.id,
-                        playCount = song.playCount,
-                        lastPlayed = song.lastPlayed,
-                        isLiked = newIsLiked
-                    )
-                )
+
+        if (songInAll != null) {
+            allSongs = allSongs.map { song ->
+                if (song.id == songId) song.copy(isLiked = newIsLiked) else song
             }
         }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val playCount = songInAll?.playCount ?: playingSong?.playCount ?: 0
+            val lastPlayed = songInAll?.lastPlayed ?: playingSong?.lastPlayed ?: 0L
+            database?.songMetaDao()?.upsert(
+                SongMetaEntity(
+                    songId = songId,
+                    playCount = playCount,
+                    lastPlayed = lastPlayed,
+                    isLiked = newIsLiked
+                )
+            )
+        }
+
         EventBus.tryPublish(UiEvent.LikeChanged(songId, newIsLiked))
+
         userPlaylists = userPlaylists.map { playlist ->
             val updated = playlist.songs.map { s ->
                 if (s.id == songId) s.copy(isLiked = newIsLiked) else s

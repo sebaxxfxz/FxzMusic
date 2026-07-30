@@ -1,5 +1,8 @@
 package com.fxzmusic.app.ui.components
 
+import com.fxzmusic.app.util.buildCoverRequest
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -182,7 +185,7 @@ private fun YouTubeQuickPickCard(
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
     ) {
         AsyncImage(
-            model = song.thumbnail,
+            model = buildCoverRequest(LocalContext.current, song.thumbnail),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),

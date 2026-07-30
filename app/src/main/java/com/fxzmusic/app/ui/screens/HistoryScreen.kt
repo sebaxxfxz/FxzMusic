@@ -1,5 +1,6 @@
 package com.fxzmusic.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -54,6 +55,15 @@ fun HistoryScreen(
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var selectionMode by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = true) {
+        if (selectionMode) {
+            selectionMode = false
+            selectedIds = emptySet()
+        } else {
+            onBack()
+        }
+    }
 
     Scaffold(
         topBar = {

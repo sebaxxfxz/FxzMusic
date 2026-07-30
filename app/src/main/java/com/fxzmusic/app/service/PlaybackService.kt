@@ -228,6 +228,7 @@ class PlaybackService : MediaLibraryService() {
         if (savedSpeed != 1.0f) player.playbackParameters = PlaybackParameters(savedSpeed)
 
         exoPlayerInstance = player
+        AudioOutputManager(this).restoreSavedRoute()
         currentAudioSessionId = player.audioSessionId
         initEqualizer(player.audioSessionId)
 

@@ -18,14 +18,25 @@ fun Context.isWifiConnected(): Boolean {
     return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
 }
 
+fun String?.toHighResThumbnailUrl(): String? {
+    if (this == null || isBlank()) return this
+    if (contains("googleusercontent.com") || contains("ggpht.com")) {
+        return this
+            .replace(Regex("""=w\d+-h\d+.*"""), "=w1200-h1200-p-k-no-nd")
+            .replace(Regex("""=s\d+.*"""), "=s1200")
+            .replace(Regex("""=w\d+"""), "=w1200")
+    }
+    return this
+}
+
 fun buildCoverRequest(context: Context, song: Song): ImageRequest {
-    
     val embeddedCoverPath = getEmbeddedCoverFilePath(context, song)
-    val coverData = if (embeddedCoverPath != null) {
+    val rawCover = if (embeddedCoverPath != null) {
         embeddedCoverPath
     } else {
         song.coverUrl
     }
+    val coverData = rawCover.toHighResThumbnailUrl()
 
     val wifiOnly = context.applicationContext
         .getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
@@ -39,8 +50,8 @@ fun buildCoverRequest(context: Context, song: Song): ImageRequest {
 
     return ImageRequest.Builder(context)
         .data(coverData)
-        .crossfade(false)
-        .size(Size(260, 260))
+        .crossfade(true)
+        .size(Size.ORIGINAL)
         .networkCachePolicy(networkPolicy)
         .diskCachePolicy(CachePolicy.ENABLED)
         .memoryCachePolicy(CachePolicy.ENABLED)
@@ -59,9 +70,9 @@ fun buildCoverRequest(context: Context, coverUrl: String?): ImageRequest {
     }
 
     return ImageRequest.Builder(context)
-        .data(coverUrl)
-        .crossfade(false)
-        .size(Size(260, 260))
+        .data(coverUrl.toHighResThumbnailUrl())
+        .crossfade(true)
+        .size(Size.ORIGINAL)
         .networkCachePolicy(networkPolicy)
         .diskCachePolicy(CachePolicy.ENABLED)
         .memoryCachePolicy(CachePolicy.ENABLED)

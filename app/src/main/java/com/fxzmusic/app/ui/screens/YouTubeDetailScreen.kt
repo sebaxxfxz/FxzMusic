@@ -1,5 +1,8 @@
 package com.fxzmusic.app.ui.screens
 
+import com.fxzmusic.app.util.buildCoverRequest
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -260,7 +263,7 @@ private fun AlbumDetail(
         item {
             Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
                 AsyncImage(
-                    model = album.thumbnail,
+                    model = buildCoverRequest(LocalContext.current, album.thumbnail),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -552,7 +555,7 @@ private fun ArtistDetail(
         item {
             Box(modifier = Modifier.fillMaxWidth().height(280.dp)) {
                 AsyncImage(
-                    model = artist.thumbnail,
+                    model = buildCoverRequest(LocalContext.current, artist.thumbnail),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -849,7 +852,7 @@ private fun PlaylistDetail(
         item {
             Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
                 AsyncImage(
-                    model = playlist.thumbnail,
+                    model = buildCoverRequest(LocalContext.current, playlist.thumbnail),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

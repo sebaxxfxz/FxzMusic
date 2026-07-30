@@ -58,10 +58,20 @@ import androidx.compose.ui.unit.sp
 import com.fxzmusic.app.ui.components.GlassCard
 import com.fxzmusic.app.viewmodel.AudioFxViewModel
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+
 @Composable
-fun AudioFxScreen(fxViewModel: AudioFxViewModel) {
+fun AudioFxScreen(
+    fxViewModel: AudioFxViewModel,
+    onBack: () -> Unit = {}
+) {
     val context = LocalContext.current
     val accent = MaterialTheme.colorScheme.primary
+
+    BackHandler(enabled = true) {
+        onBack()
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -69,8 +79,25 @@ fun AudioFxScreen(fxViewModel: AudioFxViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text("AUDIO DSP", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-            Text("Efectos de Sonido", color = MaterialTheme.colorScheme.onSurface, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+                Column {
+                    Text("AUDIO DSP", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Text("Efectos de Sonido", color = MaterialTheme.colorScheme.onSurface, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
         }
 
         item {

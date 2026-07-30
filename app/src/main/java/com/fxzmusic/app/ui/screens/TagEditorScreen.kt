@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -66,6 +67,10 @@ fun TagEditorScreen(
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
+
+    BackHandler(enabled = true) {
+        onDismiss()
+    }
 
     var title  by remember { mutableStateOf(song.title) }
     var artist by remember { mutableStateOf(song.artist) }

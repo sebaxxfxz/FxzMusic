@@ -14,9 +14,11 @@ data class Thumbnail(
     val height: Int?,
 )
 
+fun String.toHighResThumbnailUrl(): String {
+    if (isBlank()) return this
+    return this
+}
+
 fun Thumbnails?.getHighResUrl(): String? {
     return this?.thumbnails?.lastOrNull()?.url
-        ?.replace(Regex("w\\d+-h\\d+"), "w1080-h1080")
-        ?.replace(Regex("=s\\d+"), "=s1080")
-        ?.replace("hqdefault", "maxresdefault")
 }

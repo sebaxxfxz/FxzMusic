@@ -63,6 +63,8 @@ import com.fxzmusic.app.ui.components.scaleOnPress
 import com.fxzmusic.app.viewmodel.EqualizerViewModel
 import kotlin.math.roundToInt
 
+import androidx.activity.compose.BackHandler
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EqualizerScreen(
@@ -72,6 +74,10 @@ fun EqualizerScreen(
     val profile = equalizerViewModel.currentProfile
     val isEnabled = equalizerViewModel.isEnabled
     val accent = MaterialTheme.colorScheme.primary
+
+    BackHandler(enabled = true) {
+        onBack()
+    }
 
     Column(
         modifier = Modifier

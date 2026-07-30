@@ -1,5 +1,8 @@
 package com.fxzmusic.app.ui.components
 
+import com.fxzmusic.app.util.buildCoverRequest
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -73,7 +76,7 @@ fun YouTubeHeroBanner(
         
         if (thumbnail.isNotEmpty()) {
             AsyncImage(
-                model = thumbnail,
+                model = buildCoverRequest(LocalContext.current, thumbnail),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -115,7 +118,7 @@ fun YouTubeHeroBanner(
             ) {
                 if (thumbnail.isNotEmpty()) {
                     AsyncImage(
-                        model = thumbnail,
+                        model = buildCoverRequest(LocalContext.current, thumbnail),
                         contentDescription = title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

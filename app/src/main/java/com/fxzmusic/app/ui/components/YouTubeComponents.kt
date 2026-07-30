@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.fxzmusic.app.util.buildCoverRequest
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.History
@@ -107,7 +109,7 @@ fun YouTubeSongCard(
             ) {
                 if (song.thumbnail.isNotEmpty()) {
                     AsyncImage(
-                        model = song.thumbnail,
+                        model = buildCoverRequest(LocalContext.current, song.thumbnail),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -130,7 +132,7 @@ fun YouTubeSongCard(
                     } else {
                         if (song.thumbnail.isNotEmpty()) {
                             AsyncImage(
-                                model = song.thumbnail,
+                                model = buildCoverRequest(LocalContext.current, song.thumbnail),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
@@ -230,7 +232,7 @@ fun YouTubeAlbumCard(
         ) {
             if (album.thumbnail.isNotEmpty()) {
                 AsyncImage(
-                    model = album.thumbnail,
+                    model = buildCoverRequest(LocalContext.current, album.thumbnail),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -253,7 +255,7 @@ fun YouTubeAlbumCard(
                 } else {
                     if (album.thumbnail.isNotEmpty()) {
                         AsyncImage(
-                            model = album.thumbnail,
+                            model = buildCoverRequest(LocalContext.current, album.thumbnail),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -332,7 +334,7 @@ fun YouTubeArtistCard(
         ) {
             if (artist.thumbnail != null) {
                 AsyncImage(
-                    model = artist.thumbnail,
+                    model = buildCoverRequest(LocalContext.current, artist.thumbnail),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -355,7 +357,7 @@ fun YouTubeArtistCard(
                 } else {
                     if (artist.thumbnail != null) {
                         AsyncImage(
-                            model = artist.thumbnail,
+                            model = buildCoverRequest(LocalContext.current, artist.thumbnail),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -421,7 +423,7 @@ fun YouTubePlaylistCard(
         ) {
             if (playlist.thumbnail != null) {
                 AsyncImage(
-                    model = playlist.thumbnail,
+                    model = buildCoverRequest(LocalContext.current, playlist.thumbnail),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -444,7 +446,7 @@ fun YouTubePlaylistCard(
                 } else {
                     if (playlist.thumbnail != null) {
                         AsyncImage(
-                            model = playlist.thumbnail,
+                            model = buildCoverRequest(LocalContext.current, playlist.thumbnail),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -536,7 +538,7 @@ fun YouTubeHeroCard(
         Box(modifier = Modifier.fillMaxSize()) {
             if (thumbnailUrl != null) {
                 AsyncImage(
-                    model = thumbnailUrl,
+                    model = buildCoverRequest(LocalContext.current, thumbnailUrl),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

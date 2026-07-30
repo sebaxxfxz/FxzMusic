@@ -146,65 +146,117 @@ fun SleepTimerDialog(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(
                                     Brush.horizontalGradient(
                                         listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
                                         )
                                     )
                                 )
                                 .border(
                                     1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                    RoundedCornerShape(16.dp)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                    RoundedCornerShape(20.dp)
                                 )
                                 .padding(16.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        "Activo",
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Text(
-                                        timeStr,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
-                                        .clickable { onCancelTimer(); onDismiss() }
-                                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.TimerOff,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(16.dp)
+                                    Column {
+                                        Text(
+                                            "TIEMPO RESTANTE",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 1.2.sp
                                         )
                                         Text(
-                                            "Cancelar",
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
+                                            timeStr,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontSize = 28.sp,
+                                            fontWeight = FontWeight.ExtraBold
                                         )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f))
+                                            .clickable { onCancelTimer(); onDismiss() }
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.TimerOff,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                "Cancelar",
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Quick adjustment buttons: -5m, +5m, +15m
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                            .clickable {
+                                                val currentMins = (sleepTimerRemainingMs / 60_000).toInt()
+                                                val newMins = (currentMins - 5).coerceAtLeast(1)
+                                                onSetTimer(newMins)
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("-5 min", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                            .clickable {
+                                                val currentMins = (sleepTimerRemainingMs / 60_000).toInt()
+                                                onSetTimer(currentMins + 5)
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("+5 min", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                            .clickable {
+                                                val currentMins = (sleepTimerRemainingMs / 60_000).toInt()
+                                                onSetTimer(currentMins + 15)
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("+15 min", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
                                     }
                                 }
                             }

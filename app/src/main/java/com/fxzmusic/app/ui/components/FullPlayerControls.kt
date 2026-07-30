@@ -12,7 +12,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
@@ -23,8 +25,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -87,6 +95,7 @@ fun FullPlayerControls(
     onOpenEqualizer: () -> Unit,
     onUserInteraction: () -> Unit,
     isSleepTimerActive: Boolean = false,
+    sleepTimerRemainingMs: Long = 0L,
     onShowSleepTimerToggle: () -> Unit = {},
     currentPlaybackSpeed: Float = 1f,
     onShowSpeedToggle: () -> Unit = {},
@@ -406,63 +415,220 @@ fun FullPlayerControls(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Row(
+        // Determine active selected tab index for sliding pill indicator
+        val selectedTab = when {
+            showLyrics -> 0
+            showQueue -> 2
+            currentPlaybackSpeed != 1f -> 1
+            isSleepTimerActive -> 3
+            else -> -1
+        }
+
+        // Bottom Nav Bar (Same glassmorphic design & sliding pill as Home BottomNavBar)
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth(0.94f)
+                .height(60.dp)
+                .clip(RoundedCornerShape(30.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(30.dp)
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            val tabs = listOf(
-                Triple("LETRA", Icons.Filled.MicNone, showLyrics),
-                Triple("VEL.", Icons.Filled.Speed, currentPlaybackSpeed != 1f),
-                Triple("COLA", Icons.AutoMirrored.Filled.QueueMusic, showQueue),
-                Triple("TIMER", Icons.Filled.Timer, isSleepTimerActive)
-            )
-            val onActions = listOf(onShowLyricsToggle, onShowSpeedToggle, onShowQueueToggle, onShowSleepTimerToggle)
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val speedText = if (currentPlaybackSpeed != 1f) {
+                    val formatted = if (currentPlaybackSpeed % 1f == 0f) "${currentPlaybackSpeed.toInt()}" else "$currentPlaybackSpeed"
+                    "${formatted}x"
+                } else null
 
-            tabs.zip(onActions).forEach { (tab, onAction) ->
-                val (label, icon, isActive) = tab
-                val itemScale by animateFloatAsState(
-                    targetValue = if (isActive) 1.05f else 1f,
-                    animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-                    label = "tab_scale_${label}"
+                val timerText = if (isSleepTimerActive) {
+                    if (sleepTimerRemainingMs > 0) {
+                        val mins = (sleepTimerRemainingMs / 60_000).toInt()
+                        val secs = ((sleepTimerRemainingMs % 60_000) / 1000).toInt()
+                        if (mins > 0) "${mins}m" else "${secs}s"
+                    } else "ON"
+                } else null
+
+                val tabs = listOf(
+                    Triple("LETRA", Icons.Filled.MicNone, showLyrics to null),
+                    Triple("VEL.", Icons.Filled.Speed, (currentPlaybackSpeed != 1f) to speedText),
+                    Triple("COLA", Icons.AutoMirrored.Filled.QueueMusic, showQueue to null),
+                    Triple("TIMER", Icons.Filled.Timer, isSleepTimerActive to timerText)
                 )
-                Column(
-                    modifier = Modifier
-                        .scale(itemScale)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            onUserInteraction()
-                            onAction()
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                val onActions = listOf(onShowLyricsToggle, onShowSpeedToggle, onShowQueueToggle, onShowSleepTimerToggle)
+
+                val tabWidth = maxWidth / tabs.size
+                val indicatorOffset by animateDpAsState(
+                    targetValue = if (selectedTab >= 0) tabWidth * selectedTab else 0.dp,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "fullplayer_nav_indicator_offset"
+                )
+
+                var isMoving by remember { mutableStateOf(false) }
+                LaunchedEffect(selectedTab) {
+                    if (selectedTab >= 0) {
+                        isMoving = true
+                        delay(250)
+                        isMoving = false
+                    }
+                }
+
+                val capsuleStretchScaleX by animateFloatAsState(
+                    targetValue = if (isMoving) 1.12f else 1.0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "fullplayer_capsule_stretch"
+                )
+
+                val indicatorAlpha by animateFloatAsState(
+                    targetValue = if (selectedTab >= 0) 1f else 0f,
+                    animationSpec = tween(200),
+                    label = "fullplayer_indicator_alpha"
+                )
+
+                // Sliding Capsule Indicator Pill
+                if (indicatorAlpha > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = indicatorOffset)
+                            .width(tabWidth)
+                            .fillMaxHeight()
+                            .padding(vertical = 5.dp, horizontal = 5.dp)
+                            .graphicsLayer {
+                                scaleX = capsuleStretchScaleX
+                                alpha = indicatorAlpha
+                            }
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        accent.copy(alpha = 0.32f),
+                                        accent.copy(alpha = 0.12f)
+                                    )
+                                )
+                            )
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    listOf(
+                                        accent.copy(alpha = 0.65f),
+                                        accent.copy(alpha = 0.20f)
+                                    )
+                                ),
+                                shape = RoundedCornerShape(22.dp)
+                            )
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = label,
-                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        label,
-                        color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        fontSize = 9.sp,
-                        fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium,
-                        letterSpacing = 1.2.sp
-                    )
-                    if (isActive) {
-                        Box(
-                            modifier = Modifier
-                                .size(3.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
+                    tabs.zip(onActions).forEachIndexed { index, (tab, onAction) ->
+                        val (label, icon, statePair) = tab
+                        val (isItemActive, badgeText) = statePair
+                        val isSelected = selectedTab == index
+
+                        val interaction = remember { MutableInteractionSource() }
+                        val isPressed by interaction.collectIsPressedAsState()
+
+                        val iconColor by animateColorAsState(
+                            targetValue = if (isSelected || isItemActive) accent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            animationSpec = tween(220),
+                            label = "fullplayer_nav_color_$index"
                         )
+                        val iconScale by animateFloatAsState(
+                            targetValue = when {
+                                isPressed -> 0.84f
+                                isSelected -> 1.15f
+                                else -> 1.0f
+                            },
+                            animationSpec = spring(
+                                dampingRatio = if (isPressed) Spring.DampingRatioNoBouncy else Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "fullplayer_nav_scale_$index"
+                        )
+                        val iconRotation by animateFloatAsState(
+                            targetValue = if (isSelected) -4f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "fullplayer_nav_rot_$index"
+                        )
+                        val labelAlpha by animateFloatAsState(
+                            targetValue = if (isSelected || isItemActive) 1f else 0.55f,
+                            animationSpec = tween(200),
+                            label = "fullplayer_nav_label_alpha_$index"
+                        )
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = interaction,
+                                    indication = null
+                                ) {
+                                    onUserInteraction()
+                                    onAction()
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label,
+                                tint = iconColor,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .graphicsLayer {
+                                        scaleX = iconScale
+                                        scaleY = iconScale
+                                        rotationZ = iconRotation
+                                    }
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = iconColor.copy(alpha = labelAlpha),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = if (isSelected || isItemActive) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                                if (badgeText != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(accent.copy(alpha = 0.25f))
+                                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = badgeText,
+                                            color = accent,
+                                            fontSize = 7.5.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

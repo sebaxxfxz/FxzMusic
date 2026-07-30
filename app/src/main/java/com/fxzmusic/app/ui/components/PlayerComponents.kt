@@ -66,6 +66,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -224,8 +225,8 @@ fun FullPlayerScreen(
         else lyricsViewModel.stopSync()
     }
 
-    LaunchedEffect(isPlaying, showUi, showLyrics, showQueue) {
-        if (isPlaying && showUi && !showLyrics && !showQueue) { delay(15000); showUi = false }
+    LaunchedEffect(isPlaying, showUi) {
+        if (isPlaying && showUi) { delay(5000); showUi = false }
     }
 
     val onUserInteraction: () -> Unit = {
@@ -292,7 +293,7 @@ fun FullPlayerScreen(
 
         if (isLandscape) {
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
+                modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val panelState = when {
@@ -380,11 +381,40 @@ fun FullPlayerScreen(
                             Text(currentSong.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(currentSong.artist, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        BouncyIconButton(
-                            icon = if (currentSong.isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            tint = if (currentSong.isLiked) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f),
-                            onClick = { onUserInteraction(); onToggleLike() }
+                        val likeInteraction = remember { MutableInteractionSource() }
+                        val isLikePressed by likeInteraction.collectIsPressedAsState()
+                        val likeScale by animateFloatAsState(
+                            targetValue = if (isLikePressed) 0.80f else 1.0f,
+                            animationSpec = spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium),
+                            label = "landscape_like_scale"
                         )
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .scale(likeScale)
+                                .clip(CircleShape)
+                                .clickable(interactionSource = likeInteraction, indication = null) {
+                                    onUserInteraction()
+                                    onToggleLike()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AnimatedContent(
+                                targetState = currentSong.isLiked,
+                                transitionSpec = {
+                                    (scaleIn(spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(150)))
+                                        .togetherWith(scaleOut(tween(100)) + fadeOut(tween(100)))
+                                },
+                                label = "landscape_like_icon"
+                            ) { liked ->
+                                Icon(
+                                    if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                    contentDescription = if (liked) "Quitar de favoritos" else "Marcar como favorito",
+                                    tint = if (liked) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                     }
 
                     FxzProgressBar(
@@ -410,6 +440,7 @@ fun FullPlayerScreen(
                         onOpenEqualizer = onOpenEqualizer,
                         onUserInteraction = onUserInteraction,
                         isSleepTimerActive = isSleepTimerActive,
+                        sleepTimerRemainingMs = sleepTimerRemainingMs,
                         onShowSleepTimerToggle = { showSleepTimerDialog = true },
                         currentPlaybackSpeed = currentPlaybackSpeed,
                         onShowSpeedToggle = { showSpeedDialog = true }
@@ -418,7 +449,11 @@ fun FullPlayerScreen(
             }
         } else {
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 AnimatedVisibility(visible = showUi, enter = slideInVertically(tween(300)) { -it / 4 } + fadeIn(tween(250)), exit = slideOutVertically(tween(500)) { -it / 5 } + fadeOut(tween(400))) {
@@ -734,6 +769,7 @@ fun FullPlayerScreen(
                             onOpenEqualizer = onOpenEqualizer,
                             onUserInteraction = onUserInteraction,
                             isSleepTimerActive = isSleepTimerActive,
+                            sleepTimerRemainingMs = sleepTimerRemainingMs,
                             onShowSleepTimerToggle = { showSleepTimerDialog = true },
                             currentPlaybackSpeed = currentPlaybackSpeed,
                             onShowSpeedToggle = { showSpeedDialog = true }

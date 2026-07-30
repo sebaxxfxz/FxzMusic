@@ -52,6 +52,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -1029,12 +1030,13 @@ fun MainScreen(
                                 onNext = { musicPlayerViewModel.playNext() },
                                 onPrevious = { musicPlayerViewModel.playPrevious() },
                                 onSeek = { musicPlayerViewModel.seekTo(it) },
-                                onToggleLike = { libraryViewModel.toggleLike(miniPlayerSong.id) },
+                                onToggleLike = { libraryViewModel.toggleLike(miniPlayerSong.id, miniPlayerSong) },
                                 onSwipeToDismiss = { playerStateManager.hideMiniPlayer(); if (musicPlayerViewModel.isPlaying) musicPlayerViewModel.togglePlayPause() }
                             ),
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = miniVisibilityScope,
                             modifier = Modifier
+                                .navigationBarsPadding()
                                 .padding(bottom = 90.dp)
                                 .padding(horizontal = 16.dp)
                         )
@@ -1080,7 +1082,7 @@ fun MainScreen(
                             onToggleRepeat   = { musicPlayerViewModel.toggleRepeatMode() },
                             onClose          = { playerStateManager.closeFullPlayer() },
                             onThemeRotate    = { rotateAccent() },
-                            onToggleLike     = { libraryViewModel.toggleLike(fullPlayerSong.id) },
+                            onToggleLike     = { libraryViewModel.toggleLike(fullPlayerSong.id, fullPlayerSong) },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this,
                             modifier         = Modifier.fillMaxSize(),
@@ -1140,7 +1142,10 @@ fun MainScreen(
                     containerColor = currentTheme.surface,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    EqualizerScreen(equalizerViewModel = equalizerViewModel)
+                    EqualizerScreen(
+                        equalizerViewModel = equalizerViewModel,
+                        onBack = { playerStateManager.hideEqualizer() }
+                    )
                 }
             }
 
@@ -1151,7 +1156,10 @@ fun MainScreen(
                     containerColor = currentTheme.surface,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    AudioFxScreen(fxViewModel = fxViewModel)
+                    AudioFxScreen(
+                        fxViewModel = fxViewModel,
+                        onBack = { playerStateManager.hideAudioFx() }
+                    )
                 }
             }
 
@@ -1253,6 +1261,7 @@ fun BottomNavBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {

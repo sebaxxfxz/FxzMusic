@@ -100,7 +100,7 @@ FxzMusic stands on the shoulders of several excellent open-source projects. Sinc
 | :--- | :--- |
 | [Better Lyrics](https://github.com/better-lyrics/better-lyrics.git) | Lyrics enhancement and synchronization |
 | [InnerTune](https://github.com/z-huang/InnerTune.git) | Foundational inspiration and architecture reference |
-| [Echo Music](https://github.com/EchoMusicApp/Echo-Music) | Playback pipeline, UI inspiration, and features reference |
+| [Echo Music](https://github.com/EchoMusicApp/Echo-Music) | Playback pipeline, |
 
 ---
 

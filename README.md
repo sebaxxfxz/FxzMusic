@@ -4,6 +4,7 @@
   <p><strong>Un reproductor de música moderno para Android con streaming sin anuncios, letras sincronizadas en tiempo real, modo sin conexión y ecualizador avanzado.</strong></p>
 
   [![GitHub Release](https://img.shields.io/github/v/release/sebaxxfxz/FxzMusic?style=for-the-badge&color=6f42c1)](https://github.com/sebaxxfxz/FxzMusic/releases)
+  [![GitHub Downloads](https://img.shields.io/github/downloads/sebaxxfxz/FxzMusic/total?style=for-the-badge&color=007ec6)](https://github.com/sebaxxfxz/FxzMusic/releases)
   [![GitHub Stars](https://img.shields.io/github/stars/sebaxxfxz/FxzMusic?style=for-the-badge&color=e3b341)](https://github.com/sebaxxfxz/FxzMusic/stargazers)
   [![GitHub Issues](https://img.shields.io/github/issues/sebaxxfxz/FxzMusic?style=for-the-badge&color=d9534f)](https://github.com/sebaxxfxz/FxzMusic/issues)
   [![License](https://img.shields.io/github/license/sebaxxfxz/FxzMusic?style=for-the-badge&color=28a745)](LICENSE)
@@ -92,7 +93,7 @@ El ejecutable estará disponible en: `app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 
-## Special Thanks
+
 
 FxzMusic stands on the shoulders of several excellent open-source projects. Sincere thanks to:
 
@@ -100,17 +101,17 @@ FxzMusic stands on the shoulders of several excellent open-source projects. Sinc
 | :--- | :--- |
 | [Better Lyrics](https://github.com/better-lyrics/better-lyrics.git) | Lyrics enhancement and synchronization |
 | [InnerTune](https://github.com/z-huang/InnerTune.git) | Foundational inspiration and architecture reference |
-| [Echo Music](https://github.com/EchoMusicApp/Echo-Music) | Playback pipeline, |
+| [Echo Music](https://github.com/EchoMusicApp/Echo-Music) | Playback pipeline |
 
 ---
 
-## 📈 Estadísticas del Repositorio
 
-### Historial de Estrellas (Star History)
+
+
 
 [![Star History Chart](https://api.star-history.com/svg?repos=sebaxxfxz/FxzMusic&type=Date)](https://star-history.com/#sebaxxfxz/FxzMusic&Date)
 
-### Métricas del Proyecto
+
 
 <div align="center">
   <img src="https://github-readme-stats.vercel.app/api/pin/?username=sebaxxfxz&repo=FxzMusic&theme=dark" alt="Estadísticas de FxzMusic"/>

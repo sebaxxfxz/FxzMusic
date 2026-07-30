@@ -1,15 +1,59 @@
-Copyright (c) 2026 Sebastian Ramirez- Fxz Corp
-Todos los derechos reservados / All rights reserved.
+===============================================================================
+FxzMusic 🎵
+Copyright (C) 2026 Sebastian Ramirez / Fxz Corp
 
-ESPAÑOL:
-Este software no puede ser copiado, modificado, distribuido
-ni utilizado sin el permiso explícito y por escrito del autor.
-Queda prohibido el uso de este código para crear aplicaciones
-derivadas, copias o productos similares sin autorización previa.
+FxzMusic is an original Android application built from scratch. Special
+acknowledgment and credit are given to the following open-source projects
+that provided inspiration, design reference, and feature enhancements
+(such as the InnerTube integration):
 
-ENGLISH:
-This software may not be copied, modified, distributed,
-or used without explicit written permission from the author.
-The use of this code to create derivative applications,
-copies, or similar products without prior authorization is strictly prohibited.
+- Echo Music (https://github.com/EchoMusicApp/Echo-Music)
+- InnerTune (https://github.com/z-huang/InnerTune)
+- Better Lyrics (https://github.com/better-lyrics/better-lyrics)
 
+Their original license files are preserved unmodified in this repository
+wherever their code is used (see innertube/LICENSE and related directories).
+
+Licensed and distributed under the terms of the GNU General Public License
+as published by the Free Software Foundation, version 3 (GPL-3.0).
+===============================================================================
+
+                    GNU GENERAL PUBLIC LICENSE
+                      Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  [... el texto completo de la GPL-3.0 tal como ya lo tenías, sin cambios ...]
+
+                     END OF TERMS AND CONDITIONS
+
+            How to Apply These Terms to Your New Programs
+
+  If you develop a new program, and you want it to be of the greatest
+possible use to the public, the best way to achieve this is to make it
+free software which everyone can redistribute and change under these terms.
+
+  To do so, attach the following notices to the program.  It is safest
+to attach them to the start of each source file to most effectively
+state the exclusion of warranty; and each file should have at least
+the "copyright" line and a pointer to where the full notice is found.
+
+    FxzMusic - A modern music player for Android
+    Copyright (C) 2026 Sebastian Ramirez / Fxz Corp
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.

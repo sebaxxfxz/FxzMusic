@@ -2,8 +2,8 @@
 .gradle/
 /local.properties
 /.idea/
-/build
-/captures
+build/
+captures/
 .externalNativeBuild
 .cxx
 local.properties
@@ -20,3 +20,15 @@ claude-skills/
 specs/
 diff_output.txt
 diff_output_utf8.txt
+*.hprof
+*.log
+*.backup
+*.properties.txt
+update-check.json
+test_regex.kts
+skills-lock.json
+FxzMusic_/
+
+# Ignore all markdown files except README.md
+*.md
+!README.md.kotlin/

@@ -1,5 +1,5 @@
-plugins {    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+plugins {
+    id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     alias(libs.plugins.kotlin.serialization)
     id("com.google.devtools.ksp")}
@@ -12,8 +12,8 @@ android {
         applicationId = "com.fxzmusic.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 300
+        versionName = "3.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -30,15 +30,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
-        freeCompilerArgs += listOf(
-            "-Xjvm-default=all-compatibility",
-            "-Xmax-classparts=512",
-            "-Xno-inline-higher-order-functions"
-        )
-    }
-
     composeOptions {
         kotlinCompilerExtensionVersion = "2.2.10"
     }
@@ -47,12 +38,23 @@ android {
         compose = true
     }
 
-    packagingOptions {
+    packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/LICENSE.txt"
             excludes += "META-INF/NOTICE.txt"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        freeCompilerArgs.addAll(
+            "-Xjvm-default=all-compatibility",
+            "-Xmax-classparts=512",
+            "-Xno-inline-higher-order-functions"
+        )
     }
 }
 

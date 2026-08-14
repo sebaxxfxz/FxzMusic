@@ -175,16 +175,52 @@ class MusicPlayerViewModel : ViewModel() {
 
     enum class RepeatMode { NONE, ONE, ALL }
 
+    private fun handleSessionExtras(extras: android.os.Bundle) {
+        val songId = extras.getString(EXTRA_AUDIO_SONG_ID)
+        val mime = extras.getString(EXTRA_AUDIO_MIME)
+        val bitrate = extras.getInt(EXTRA_AUDIO_BITRATE, -1).takeIf { it > 0 }
+        val sampleRate = extras.getInt(EXTRA_AUDIO_SAMPLE_RATE, -1).takeIf { it > 0 }
+        val channels = extras.getInt(EXTRA_AUDIO_CHANNELS, -1).takeIf { it > 0 }
+        val codecs = extras.getString(EXTRA_AUDIO_CODECS)
+
+        val current = currentSong
+        if (current != null && (songId.isNullOrEmpty() || songId == current.id)) {
+            val existing = currentAudioMetadata
+            currentAudioMetadata = AudioMetadata(
+                bitrate = bitrate ?: existing?.bitrate,
+                sampleRate = sampleRate ?: existing?.sampleRate,
+                channels = channels ?: existing?.channels ?: 2,
+                durationMs = (current.duration * 1000L).takeIf { it > 0 } ?: existing?.durationMs,
+                mimeType = mime?.takeIf { it.isNotEmpty() } ?: existing?.mimeType,
+                codecString = codecs?.takeIf { it.isNotEmpty() } ?: existing?.codecString,
+                fileSize = existing?.fileSize,
+                filePath = existing?.filePath ?: current.filePath
+            )
+        }
+    }
+
     fun initializePlayer(context: Context, allSongs: List<Song> = emptyList()) {
         prefs = context.getSharedPreferences("playback_state", Context.MODE_PRIVATE)
         database = FxzDatabase.getInstance(context.applicationContext)
 
         if (mediaControllerFuture == null) {
             val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-            mediaControllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+            val controllerListener = object : MediaController.Listener {
+                override fun onExtrasChanged(controller: MediaController, extras: android.os.Bundle) {
+                    handleSessionExtras(extras)
+                }
+            }
+            mediaControllerFuture = MediaController.Builder(context, sessionToken)
+                .setListener(controllerListener)
+                .buildAsync()
             mediaControllerFuture?.addListener({
                 try {
                     mediaController = mediaControllerFuture?.get()
+                    mediaController?.let { c ->
+                        if (!c.sessionExtras.isEmpty) {
+                            handleSessionExtras(c.sessionExtras)
+                        }
+                    }
                 } catch (e: Exception) {
                     android.util.Log.e("MusicPlayerVM", "Failed to build MediaController: ${e.message}", e)
                     mediaControllerFuture = null
@@ -328,9 +364,10 @@ class MusicPlayerViewModel : ViewModel() {
     private fun startPositionUpdates() {
         positionUpdateJob?.cancel()
         positionUpdateJob = viewModelScope.launch {
-            while (true) {
+            while (isPlaying) {
                 delay(200)
                 mediaController?.let { player ->
+                    if (!player.isPlaying) return@let
                     val newPos = (player.currentPosition / 1000).toInt()
                     if (newPos != currentPosition) {
                         currentPosition = newPos
@@ -555,6 +592,7 @@ class MusicPlayerViewModel : ViewModel() {
 
     fun togglePlayPause() { mediaController?.let { if (it.isPlaying) it.pause() else it.play() } }
     fun pauseIfPlaying() { mediaController?.let { if (it.isPlaying) it.pause() } }
+    fun getCurrentPositionMs(): Long = mediaController?.currentPosition ?: 0L
     fun seekTo(position: Int) {
         mediaController?.seekTo(position * 1000L)
         currentPosition = position

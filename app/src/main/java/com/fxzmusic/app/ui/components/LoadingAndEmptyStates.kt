@@ -2,7 +2,6 @@ package com.fxzmusic.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -31,9 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +70,7 @@ fun EmptyState(
             Box(
                 modifier = Modifier
                     .size(80.dp)
-                    .scale(scale)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
@@ -118,6 +117,15 @@ fun EmptyState(
     }
 }
 
+private val PlaceholderColor = Color(0xFF22222E)
+private val PlaceholderBrush = Brush.linearGradient(
+    colors = listOf(
+        Color(0xFF1C1C28),
+        Color(0xFF262636),
+        Color(0xFF1C1C28)
+    )
+)
+
 @Composable
 fun ShimmerList(rows: Int = 5) {
     Column(
@@ -125,23 +133,13 @@ fun ShimmerList(rows: Int = 5) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         repeat(rows) { index ->
-            ShimmerRow(delayMs = index * 80)
+            ShimmerRow()
         }
     }
 }
 
 @Composable
-private fun ShimmerRow(delayMs: Int = 0) {
-    val transition = rememberInfiniteTransition(label = "shimmer_row_$delayMs")
-    val shimmerX by transition.animateFloat(
-        initialValue = -300f,
-        targetValue = 900f,
-        animationSpec = infiniteRepeatable(
-            tween(900, easing = LinearEasing, delayMillis = delayMs)
-        ),
-        label = "shimmer_x"
-    )
-
+private fun ShimmerRow() {
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
@@ -154,20 +152,7 @@ private fun ShimmerRow(delayMs: Int = 0) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF181818),
-                                Color(0xFF222222),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                                Color(0xFF2C2C2C),
-                                Color(0xFF222222),
-                                Color(0xFF181818)
-                            ),
-                            start = androidx.compose.ui.geometry.Offset(shimmerX, 0f),
-                            end = androidx.compose.ui.geometry.Offset(shimmerX + 400f, 220f)
-                        )
-                    )
+                    .background(PlaceholderColor)
             )
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -176,40 +161,14 @@ private fun ShimmerRow(delayMs: Int = 0) {
                         .fillMaxWidth(0.7f)
                         .height(14.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF181818),
-                                    Color(0xFF222222),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                                    Color(0xFF2C2C2C),
-                                    Color(0xFF222222),
-                                    Color(0xFF181818)
-                                ),
-                                start = androidx.compose.ui.geometry.Offset(shimmerX, 0f),
-                                end = androidx.compose.ui.geometry.Offset(shimmerX + 400f, 220f)
-                            )
-                        )
+                        .background(PlaceholderColor)
                 )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.45f)
                         .height(10.dp)
                         .clip(RoundedCornerShape(5.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF181818),
-                                    Color(0xFF222222),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                                    Color(0xFF2C2C2C),
-                                    Color(0xFF222222),
-                                    Color(0xFF181818)
-                                ),
-                                start = androidx.compose.ui.geometry.Offset(shimmerX, 0f),
-                                end = androidx.compose.ui.geometry.Offset(shimmerX + 400f, 220f)
-                            )
-                        )
+                        .background(PlaceholderColor)
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
@@ -217,20 +176,7 @@ private fun ShimmerRow(delayMs: Int = 0) {
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF181818),
-                                Color(0xFF222222),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                                Color(0xFF2C2C2C),
-                                Color(0xFF222222),
-                                Color(0xFF181818)
-                            ),
-                            start = androidx.compose.ui.geometry.Offset(shimmerX, 0f),
-                            end = androidx.compose.ui.geometry.Offset(shimmerX + 400f, 220f)
-                        )
-                    )
+                    .background(PlaceholderColor)
             )
         }
     }
@@ -238,28 +184,6 @@ private fun ShimmerRow(delayMs: Int = 0) {
 
 @Composable
 fun AppShimmerSkeleton() {
-    val transition = rememberInfiniteTransition(label = "app_skeleton")
-    val shimmerX by transition.animateFloat(
-        initialValue = -400f,
-        targetValue = 1200f,
-        animationSpec = infiniteRepeatable(
-            tween(1000, easing = LinearEasing)
-        ),
-        label = "shimmer_x"
-    )
-
-    val shimmerBrush = Brush.linearGradient(
-        colors = listOf(
-            Color(0xFF161622),
-            Color(0xFF222234),
-            Color(0xFF2E2E48),
-            Color(0xFF222234),
-            Color(0xFF161622)
-        ),
-        start = androidx.compose.ui.geometry.Offset(shimmerX, 0f),
-        end = androidx.compose.ui.geometry.Offset(shimmerX + 500f, 300f)
-    )
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -271,7 +195,7 @@ fun AppShimmerSkeleton() {
                 .fillMaxWidth()
                 .height(180.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(shimmerBrush)
+                .background(PlaceholderBrush)
         )
 
         Row(
@@ -284,7 +208,7 @@ fun AppShimmerSkeleton() {
                         .width(84.dp)
                         .height(36.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(shimmerBrush)
+                        .background(PlaceholderBrush)
                 )
             }
         }
@@ -294,7 +218,7 @@ fun AppShimmerSkeleton() {
                 .width(140.dp)
                 .height(20.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(shimmerBrush)
+                .background(PlaceholderBrush)
         )
 
         Row(
@@ -307,14 +231,14 @@ fun AppShimmerSkeleton() {
                         modifier = Modifier
                             .size(120.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(shimmerBrush)
+                            .background(PlaceholderBrush)
                     )
                     Box(
                         modifier = Modifier
                             .width(90.dp)
                             .height(12.dp)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(shimmerBrush)
+                            .background(PlaceholderBrush)
                     )
                 }
             }
@@ -324,26 +248,4 @@ fun AppShimmerSkeleton() {
             ShimmerRow()
         }
     }
-}
-
-@Composable
-fun ShimmerBox(
-    modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-) {
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val alpha by transition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "shimmer_alpha"
-    )
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Color.Gray.copy(alpha = alpha))
-    )
 }

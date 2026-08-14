@@ -136,7 +136,7 @@ fun QueuePanel(
                     ) {
                         if (currentSong.coverUrl != null) {
                             AsyncImage(
-                                model = buildCoverRequest(LocalContext.current, currentSong.coverUrl),
+                                model = buildCoverRequest(LocalContext.current, currentSong.coverUrl, maxSize = 1024),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
@@ -371,7 +371,7 @@ fun QueuePanel(
                     ) {
                         if (song.coverUrl != null) {
                             AsyncImage(
-                                model = buildCoverRequest(LocalContext.current, song.coverUrl),
+                                model = buildCoverRequest(LocalContext.current, song.coverUrl, maxSize = 1024),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()

@@ -12,8 +12,8 @@ android {
         applicationId = "com.fxzmusic.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 310
-        versionName = "3.1.0"
+        versionCode = 320
+        versionName = "3.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -26,12 +26,8 @@ android {
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "2.2.10"
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     buildFeatures {
@@ -49,13 +45,14 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-        freeCompilerArgs.addAll(
-            "-Xjvm-default=all-compatibility",
-            "-Xmax-classparts=512",
-            "-Xno-inline-higher-order-functions"
-        )
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
+}
+
+composeCompiler {
+    metricsDestination = file("build/compose-metrics")
+    reportsDestination = file("build/compose-reports")
+    stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_compiler_config.conf"))
 }
 
 dependencies {
@@ -100,8 +97,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.palette.ktx)
 
-    implementation(libs.valentinilk.shimmer)
     implementation(libs.materialkolor)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
 
     implementation(project(":innertube"))
     implementation(project(":ytpipeline"))

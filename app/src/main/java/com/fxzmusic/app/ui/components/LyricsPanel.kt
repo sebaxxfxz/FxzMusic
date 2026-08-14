@@ -1,18 +1,26 @@
 package com.fxzmusic.app.ui.components
 
+import com.fxzmusic.app.R
 import com.fxzmusic.app.util.LyricsImageGenerator
 import com.fxzmusic.app.data.LyricsState
 import com.fxzmusic.app.data.LyricsStyle
 import com.fxzmusic.app.viewmodel.LyricsViewModel
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,10 +34,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Refresh
@@ -49,18 +58,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 private fun lerpFloat(a: Float, b: Float, fraction: Float): Float =
@@ -72,11 +91,19 @@ private fun lerpFontWeight(a: FontWeight, b: FontWeight, fraction: Float): FontW
     return FontWeight(w)
 }
 
-private fun alphaForDistance(distance: Int): Float = when (distance) {
-    0 -> 1.0f
-    1 -> 0.65f
-    2 -> 0.45f
-    else -> 0.35f
+private fun alphaForDistance(distance: Int, style: LyricsStyle = LyricsStyle.DEFAULT): Float = when (style) {
+    LyricsStyle.FADE -> when (distance) {
+        0 -> 1.0f
+        1 -> 0.35f
+        2 -> 0.18f
+        else -> 0.08f
+    }
+    else -> when (distance) {
+        0 -> 1.0f
+        1 -> 0.65f
+        2 -> 0.45f
+        else -> 0.35f
+    }
 }
 
 private fun scaleForDistance(distance: Int): Float = when (distance) {
@@ -85,31 +112,13 @@ private fun scaleForDistance(distance: Int): Float = when (distance) {
     else -> 0.95f
 }
 
-private fun blurDpForDistance(distance: Int): Float = when (distance) {
-    0 -> 0f
-    1 -> 2f
-    2 -> 4f
-    else -> 6f
-}
-
-private fun Modifier.distanceEffects(distance: Int, apiLevel: Int): Modifier {
-    val alpha = alphaForDistance(distance)
+private fun Modifier.distanceEffects(distance: Int, style: LyricsStyle = LyricsStyle.DEFAULT): Modifier {
+    val alpha = alphaForDistance(distance, style)
     val scale = scaleForDistance(distance)
-    val blurDp = blurDpForDistance(distance)
-    return if (apiLevel >= 31 && blurDp > 0f) {
-        this
-            .blur(blurDp.dp)
-            .graphicsLayer {
-                this.alpha = alpha
-                this.scaleX = scale
-                this.scaleY = scale
-            }
-    } else {
-        this.graphicsLayer {
-            this.alpha = alpha
-            this.scaleX = scale
-            this.scaleY = scale
-        }
+    return this.graphicsLayer {
+        this.alpha = alpha
+        this.scaleX = scale
+        this.scaleY = scale
     }
 }
 
@@ -156,28 +165,90 @@ private suspend fun LazyListState.animateScrollToCenter(index: Int) {
     }
 }
 
+@Composable
+fun LyricsShimmerSkeleton(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "lyrics_shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer_anim"
+    )
+
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    )
+
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim - 200f, translateAnim - 200f),
+        end = Offset(translateAnim, translateAnim)
+    )
+
+    val lineFractions = remember { listOf(0.60f, 0.85f, 0.70f, 0.90f, 0.50f, 0.80f) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp, vertical = 64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        lineFractions.forEach { frac ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(frac)
+                    .height(22.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(brush)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.lyrics_loading),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 14.sp
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LyricsPanel(lyricsViewModel: LyricsViewModel, onSeek: (Int) -> Unit = {}, modifier: Modifier = Modifier) {
     val listState    = rememberLazyListState()
+    val isDragged by listState.interactionSource.collectIsDraggedAsState()
+    var isUserScrolling by remember { mutableStateOf(false) }
+    val haptic       = LocalHapticFeedback.current
     val currentIndex = lyricsViewModel.currentLineIndex
+    val selectedStyle = lyricsViewModel.selectedStyle
     val context      = LocalContext.current
-    val apiLevel     = remember { android.os.Build.VERSION.SDK_INT }
     var selectedIndices by remember { mutableStateOf(emptySet<Int>()) }
     var selectionMode by remember { mutableStateOf(false) }
 
-    LaunchedEffect(currentIndex) {
-        if (currentIndex >= 0) {
+    LaunchedEffect(isDragged) {
+        if (isDragged) {
+            isUserScrolling = true
+        } else if (isUserScrolling) {
+            delay(3500L)
+            isUserScrolling = false
+        }
+    }
+
+    LaunchedEffect(currentIndex, isUserScrolling) {
+        if (!isUserScrolling && currentIndex >= 0) {
             listState.animateScrollToCenter(currentIndex)
         }
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         when (val state = lyricsViewModel.lyricsState) {
-            is LyricsState.Loading -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("\uD83C\uDFB5", fontSize = 32.sp); Spacer(modifier = Modifier.height(12.dp))
-                Text("Buscando letra...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-            }
+            is LyricsState.Loading -> LyricsShimmerSkeleton()
             is LyricsState.Synced -> Column(modifier = Modifier.fillMaxSize()) {
                 LyricsPanelHeader(
                     lyricsViewModel = lyricsViewModel,
@@ -228,7 +299,24 @@ fun LyricsPanel(lyricsViewModel: LyricsViewModel, onSeek: (Int) -> Unit = {}, mo
                                 this.scaleY = lineScale
                             }
                         } else {
-                            Modifier.distanceEffects(distance, apiLevel)
+                            Modifier.distanceEffects(distance, selectedStyle)
+                        }
+
+                        val styleBackgroundModifier = when {
+                            isActive && selectedStyle == LyricsStyle.GLOW -> Modifier.background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                        Color.Transparent
+                                    )
+                                ),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            isActive && selectedStyle == LyricsStyle.KARAOKE && line.words.isEmpty() -> Modifier.background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            else -> Modifier
                         }
 
                         val clickModifier = if (selectionMode) {
@@ -261,7 +349,11 @@ fun LyricsPanel(lyricsViewModel: LyricsViewModel, onSeek: (Int) -> Unit = {}, mo
                             Modifier.combinedClickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { onSeek((line.timeMs / 1000).toInt()) },
+                                onClick = {
+                                    runCatching { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+                                    isUserScrolling = false
+                                    onSeek((line.timeMs / 1000).toInt())
+                                },
                                 onLongClick = {
                                     selectionMode = true
                                     selectedIndices = setOf(index)
@@ -272,8 +364,13 @@ fun LyricsPanel(lyricsViewModel: LyricsViewModel, onSeek: (Int) -> Unit = {}, mo
                         val animatedFontSize = lerpFloat(20f, 28f, activeProgress).sp
                         val animatedFontWeight = lerpFontWeight(FontWeight.Normal, FontWeight.Bold, activeProgress)
 
+                        val activeColor = when (selectedStyle) {
+                            LyricsStyle.KARAOKE -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+
                         val targetColor = when {
-                            isActive -> MaterialTheme.colorScheme.onSurface
+                            isActive -> activeColor
                             isPast -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         }
@@ -286,19 +383,64 @@ fun LyricsPanel(lyricsViewModel: LyricsViewModel, onSeek: (Int) -> Unit = {}, mo
                             label = "line_color"
                         )
 
-                        Text(
-                            text = line.text.ifEmpty { "\u266A" },
-                            color = animatedColor,
-                            fontSize = animatedFontSize,
-                            fontWeight = animatedFontWeight,
-                            textAlign = TextAlign.Center,
-                            lineHeight = animatedFontSize * 1.25f,
-                            modifier = distanceModifier
-                                .animateItem()
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .then(clickModifier)
-                        )
+                        val textShadow = if (isActive && selectedStyle == LyricsStyle.GLOW) {
+                            Shadow(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                blurRadius = 24f,
+                                offset = Offset.Zero
+                            )
+                        } else null
+
+                        val currentPos = lyricsViewModel.currentPlaybackPositionMs
+                        if (isActive && line.words.isNotEmpty()) {
+                            val annotatedString = buildAnnotatedString {
+                                line.words.forEachIndexed { wordIdx, word ->
+                                    val isWordActive = currentPos >= word.startMs && currentPos <= word.endMs
+                                    val isWordPast = currentPos > word.endMs
+                                    val wordColor = when {
+                                        isWordActive -> MaterialTheme.colorScheme.primary
+                                        isWordPast -> MaterialTheme.colorScheme.onSurface
+                                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                    }
+                                    val wordWeight = if (isWordActive) FontWeight.ExtraBold else FontWeight.SemiBold
+                                    withStyle(SpanStyle(color = wordColor, fontWeight = wordWeight)) {
+                                        append(word.text)
+                                    }
+                                    if (wordIdx < line.words.lastIndex && !word.text.endsWith(" ") && !line.words[wordIdx + 1].text.startsWith(" ")) {
+                                        append(" ")
+                                    }
+                                }
+                            }
+                            Text(
+                                text = annotatedString,
+                                style = TextStyle(shadow = textShadow),
+                                fontSize = animatedFontSize,
+                                textAlign = TextAlign.Center,
+                                lineHeight = animatedFontSize * 1.25f,
+                                modifier = distanceModifier
+                                    .animateItem()
+                                    .fillMaxWidth()
+                                    .then(styleBackgroundModifier)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    .then(clickModifier)
+                            )
+                        } else {
+                            Text(
+                                text = line.text.ifEmpty { "\u266A" },
+                                style = TextStyle(shadow = textShadow),
+                                color = animatedColor,
+                                fontSize = animatedFontSize,
+                                fontWeight = if (isActive && selectedStyle == LyricsStyle.KARAOKE) FontWeight.ExtraBold else animatedFontWeight,
+                                textAlign = TextAlign.Center,
+                                lineHeight = animatedFontSize * 1.25f,
+                                modifier = distanceModifier
+                                    .animateItem()
+                                    .fillMaxWidth()
+                                    .then(styleBackgroundModifier)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    .then(clickModifier)
+                            )
+                        }
                     }
                 }
             }
@@ -307,14 +449,14 @@ fun LyricsPanel(lyricsViewModel: LyricsViewModel, onSeek: (Int) -> Unit = {}, mo
             }
             is LyricsState.Instrumental -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("\uD83C\uDFB8", fontSize = 40.sp); Spacer(modifier = Modifier.height(12.dp))
-                Text("Pista instrumental", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+                Text(stringResource(R.string.lyrics_instrumental), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
             }
             is LyricsState.NotFound -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("\uD83C\uDFA4", fontSize = 40.sp); Spacer(modifier = Modifier.height(12.dp))
-                Text("Letra no encontrada", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+                Text(stringResource(R.string.lyrics_not_found), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 val provList = state.providers.joinToString(", ")
-                Text("${provList} fallaron", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text(stringResource(R.string.lyrics_providers_failed, provList), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
             else -> {}
         }
@@ -352,10 +494,10 @@ private fun LyricsPanelHeader(
         else        -> "0ms"
     }
     val styleLabel = when (lyricsViewModel.selectedStyle) {
-        LyricsStyle.DEFAULT -> "Normal"
-        LyricsStyle.FADE    -> "Fade"
-        LyricsStyle.GLOW    -> "Glow"
-        LyricsStyle.KARAOKE -> "Karaoke"
+        LyricsStyle.DEFAULT -> stringResource(R.string.lyrics_style_normal)
+        LyricsStyle.FADE    -> stringResource(R.string.lyrics_style_fade)
+        LyricsStyle.GLOW    -> stringResource(R.string.lyrics_style_glow)
+        LyricsStyle.KARAOKE -> stringResource(R.string.lyrics_style_karaoke)
     }
 
     if (selectionMode) {
@@ -369,12 +511,12 @@ private fun LyricsPanelHeader(
             IconButton(onClick = onExitSelection) {
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = "Salir de selección",
+                    contentDescription = stringResource(R.string.lyrics_exit_selection),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(
-                text = "$selectedCount seleccionadas",
+                text = stringResource(R.string.lyrics_selected_count, selectedCount),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
@@ -382,7 +524,7 @@ private fun LyricsPanelHeader(
             IconButton(onClick = onShareSelection) {
                 Icon(
                     Icons.Filled.Share,
-                    contentDescription = "Compartir selección",
+                    contentDescription = stringResource(R.string.lyrics_share_selection),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -396,7 +538,7 @@ private fun LyricsPanelHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { lyricsViewModel.adjustOffset(-250) }) {
-                Icon(Icons.Filled.Remove, contentDescription = "Reducir 250ms")
+                Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.lyrics_reduce_offset))
             }
             Text(
                 text = offsetLabel,
@@ -406,13 +548,13 @@ private fun LyricsPanelHeader(
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
             IconButton(onClick = { lyricsViewModel.adjustOffset(250) }) {
-                Icon(Icons.Filled.Add, contentDescription = "Aumentar 250ms")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.lyrics_increase_offset))
             }
             IconButton(onClick = { lyricsViewModel.resetOffset() }) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Resetear offset")
+                Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.lyrics_reset_offset))
             }
             IconButton(onClick = { showOffsetControls = false }) {
-                Icon(Icons.Filled.Tune, contentDescription = "Ocultar controles de offset")
+                Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.lyrics_hide_offset))
             }
         }
     } else {
@@ -427,7 +569,7 @@ private fun LyricsPanelHeader(
                 IconButton(onClick = { lyricsViewModel.cycleStyle() }) {
                     Icon(
                         Icons.Filled.Palette,
-                        contentDescription = "Cambiar estilo de letras ($styleLabel)",
+                        contentDescription = stringResource(R.string.lyrics_change_style, styleLabel),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -444,8 +586,8 @@ private fun LyricsPanelHeader(
                 if (allResults.isNotEmpty()) {
                     IconButton(onClick = { showResultsDropdown = true }) {
                         Icon(
-                            Icons.Filled.List,
-                            contentDescription = "Ver resultados alternativos (${allResults.size})",
+                            Icons.AutoMirrored.Filled.List,
+                            contentDescription = stringResource(R.string.lyrics_alt_sources_desc, allResults.size),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -454,7 +596,7 @@ private fun LyricsPanelHeader(
                         onDismissRequest = { showResultsDropdown = false }
                     ) {
                         Text(
-                            text = "Fuentes alternativas",
+                            text = stringResource(R.string.lyrics_alt_sources),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -473,7 +615,7 @@ private fun LyricsPanelHeader(
                 IconButton(onClick = { showOffsetControls = true }) {
                     Icon(
                         Icons.Filled.Tune,
-                        contentDescription = "Ajustar offset de letras",
+                        contentDescription = stringResource(R.string.lyrics_adjust_offset),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

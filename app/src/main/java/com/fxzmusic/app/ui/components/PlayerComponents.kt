@@ -73,6 +73,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -119,6 +120,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.fxzmusic.app.service.DownloadUtil
 import com.fxzmusic.app.service.YouTubeMusicRepository
+import com.fxzmusic.app.viewmodel.YouTubeMusicViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -148,7 +150,9 @@ fun FullPlayerDevicesSheet(
     val context = LocalContext.current
     val manager = remember { AudioOutputManager(context) }
 
-    LaunchedEffect(Unit) { manager.refresh() }
+    val currentDevice = remember(manager.devices) {
+        manager.devices.find { it.isCurrent }
+    }
 
     AudioDeviceSheet(
         manager = manager,
@@ -181,7 +185,10 @@ fun FullPlayerScreen(
     onPlaySongFromQueue: (Song) -> Unit = {},
     onToggleLike: () -> Unit = {},
     onAlbumClick: () -> Unit = {},
+    onOpenArtist: (String) -> Unit = {},
+    onOpenAlbum: (String) -> Unit = {},
     onThemeRotate: () -> Unit = {},
+    onOpenCarMode: () -> Unit = {},
     onShowAudioDeviceSheet: () -> Unit = {},
     onOpenEqualizer: () -> Unit = {},
     onRemoveFromQueue: (Song) -> Unit = {},
@@ -197,11 +204,14 @@ fun FullPlayerScreen(
     onPlaybackSpeedChange: (Float) -> Unit = {},
     connectedDeviceName: String? = null,
     lyricsViewModel: LyricsViewModel = viewModel(),
+    youTubeMusicViewModel: YouTubeMusicViewModel = viewModel(),
+    musicPlayerViewModel: MusicPlayerViewModel = viewModel(),
     userPlaylists: List<Playlist> = emptyList(),
     onAddToPlaylist: (Playlist) -> Unit = {},
     onCreateNewPlaylist: (String) -> Unit = {},
     onShareSong: () -> Unit = {},
-    playerBackgroundStyle: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT
+    playerBackgroundStyle: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
+    getCurrentPositionMs: () -> Long = { currentPosition.toLong() * 1000L }
 ) {
     var showUi by remember { mutableStateOf(true) }
     var showLyrics by remember { mutableStateOf(false) }
@@ -212,17 +222,21 @@ fun FullPlayerScreen(
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showPlayerMenu by remember { mutableStateOf(false) }
+    var showSimilarSongsSheet by remember { mutableStateOf(false) }
     var glassResetTrigger by remember { mutableIntStateOf(0) }
-    val currentPositionRef = rememberUpdatedState(currentPosition)
+    val currentPositionMsProvider = rememberUpdatedState(getCurrentPositionMs)
 
     LaunchedEffect(currentSong.id) {
         lyricsViewModel.loadLyricsWithOffset(currentSong)
         showUi = true
     }
 
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) lyricsViewModel.startSync { currentPositionRef.value.toLong() * 1000L }
-        else lyricsViewModel.stopSync()
+    LaunchedEffect(isPlaying, showLyrics) {
+        if (isPlaying && showLyrics) {
+            lyricsViewModel.startSync({ isPlaying }) { currentPositionMsProvider.value() }
+        } else {
+            lyricsViewModel.stopSync()
+        }
     }
 
     LaunchedEffect(isPlaying, showUi) {
@@ -369,7 +383,21 @@ fun FullPlayerScreen(
                         if (currentSong.album.isNotBlank() && currentSong.album != "Unknown Album") {
                             Text(currentSong.album, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        BouncyIconButton(icon = Icons.Filled.MoreVert, tint = MaterialTheme.colorScheme.onSurface, onClick = { onUserInteraction(); showPlayerMenu = true })
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            BouncyIconButton(
+                                icon = Icons.Filled.AutoAwesome,
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = { onUserInteraction(); showSimilarSongsSheet = true }
+                            )
+                            BouncyIconButton(
+                                icon = Icons.Filled.MoreVert,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                onClick = { onUserInteraction(); showPlayerMenu = true }
+                            )
+                        }
                     }
 
                     Row(
@@ -417,11 +445,11 @@ fun FullPlayerScreen(
                         }
                     }
 
-                    FxzProgressBar(
+                    WaveformProgressBar(
+                        songId = currentSong.id,
                         currentPosition = currentPosition,
                         duration = duration,
-                        onSeek = { onUserInteraction(); onSeek(it) },
-                        isPlaying = isPlaying
+                        onSeek = { onUserInteraction(); onSeek(it) }
                     )
 
                     FullPlayerControls(
@@ -516,6 +544,11 @@ fun FullPlayerScreen(
                                     }
                                 }
                             }
+                            BouncyIconButton(
+                                icon = Icons.Filled.AutoAwesome,
+                                tint = MaterialTheme.colorScheme.primary,
+                                onClick = { onUserInteraction(); showSimilarSongsSheet = true }
+                            )
                             BouncyIconButton(
                                 icon = Icons.Filled.MoreVert,
                                 tint = MaterialTheme.colorScheme.onSurface,
@@ -746,11 +779,11 @@ fun FullPlayerScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        FxzProgressBar(
+                        WaveformProgressBar(
+                            songId = currentSong.id,
                             currentPosition = currentPosition,
                             duration = duration,
-                            onSeek = { onUserInteraction(); onSeek(it) },
-                            isPlaying = isPlaying
+                            onSeek = { onUserInteraction(); onSeek(it) }
                         )
 
                         FullPlayerControls(
@@ -800,12 +833,39 @@ fun FullPlayerScreen(
         onSongInfo = { showSongInfo = true },
         onComments = { showComments = true },
         onThemeChange = { onThemeRotate() },
+        onOpenCarMode = { onOpenCarMode() },
         onSleepTimer = { showSleepTimerDialog = true },
+        onSimilarSongs = { showSimilarSongsSheet = true },
+        onStartRadio = {
+            youTubeMusicViewModel.startSongRadio(
+                song = currentSong,
+                playImmediately = true,
+                musicPlayerViewModel = musicPlayerViewModel,
+                context = context,
+                onStarted = {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.song_radio_started),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+        },
         lyricsOffsetMs = lyricsViewModel.lyricsOffsetMs,
         hasSyncedLyrics = lyricsViewModel.lyricsState is LyricsState.Synced,
         onLyricsOffsetPlus = { lyricsViewModel.adjustOffset(500) },
         onLyricsOffsetMinus = { lyricsViewModel.adjustOffset(-500) },
         onLyricsOffsetReset = { lyricsViewModel.resetOffset() }
+    )
+
+    SimilarSongsSheet(
+        isVisible = showSimilarSongsSheet,
+        song = currentSong,
+        youTubeViewModel = youTubeMusicViewModel,
+        musicPlayerViewModel = musicPlayerViewModel,
+        onDismiss = { showSimilarSongsSheet = false },
+        onOpenArtist = onOpenArtist,
+        onOpenAlbum = onOpenAlbum
     )
 
     if (showAudioDeviceSheet) {
@@ -843,6 +903,7 @@ fun FullPlayerScreen(
     if (showSongInfo) {
         SongInfoSheet(
             song = currentSong,
+            audioMetadata = audioMetadata,
             onDismiss = { showSongInfo = false }
         )
     }
@@ -980,7 +1041,7 @@ fun SongPreviewOverlay(
             ) {
                 Box {
                     coil.compose.AsyncImage(
-                        model = buildCoverRequest(androidx.compose.ui.platform.LocalContext.current, song),
+                        model = buildCoverRequest(androidx.compose.ui.platform.LocalContext.current, song, maxSize = 1024),
                         contentDescription = null,
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

@@ -10,6 +10,7 @@ import com.fxzmusic.app.util.*
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,9 +101,9 @@ fun LibraryScreen(
     onNavigateToDownloads: () -> Unit = {}
 ) {
     val allSongs = libraryViewModel.allSongs
-    val allAlbums = libraryViewModel.allAlbums
-    val allArtists = libraryViewModel.allArtists
-    val allFolders = libraryViewModel.allFolders
+    val allAlbums by libraryViewModel.allAlbums.collectAsStateWithLifecycle()
+    val allArtists by libraryViewModel.allArtists.collectAsStateWithLifecycle()
+    val allFolders by libraryViewModel.allFolders.collectAsStateWithLifecycle()
     val selectedFilter = libraryViewModel.selectedFilter
     val userPlaylists = libraryViewModel.userPlaylists
 

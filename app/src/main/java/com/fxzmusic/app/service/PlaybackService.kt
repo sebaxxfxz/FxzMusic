@@ -17,16 +17,24 @@ import android.media.audiofx.Equalizer
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
+import coil.imageLoader
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import coil.size.Precision
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes as Media3AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -41,9 +49,11 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
@@ -86,6 +96,14 @@ class PlaybackService : MediaLibraryService() {
             private set
         var exoPlayerInstance: ExoPlayer? = null
             private set
+        var isSleepTimerActive by mutableStateOf(false)
+            private set
+        var sleepTimerRemainingMs by mutableLongStateOf(0L)
+            private set
+        var sleepTimerTotalMinutes by mutableIntStateOf(0)
+            private set
+        var instance: PlaybackService? = null
+            private set
 
         private const val CHUNK_LENGTH = 512 * 1024L
         private const val PLAYER_CACHE_MAX_BYTES = 500L * 1024 * 1024
@@ -98,18 +116,29 @@ class PlaybackService : MediaLibraryService() {
     private var audioFocusRequest: AudioFocusRequest? = null
     private var wasPlayingBeforeFocusLoss = false
 
-    private var equalizer: Equalizer? = null
+    private lateinit var audioEffectManager: AudioEffectManager
     private lateinit var connectivityManager: ConnectivityManager
 
     private var crossfadeJob: Job? = null
     private val gson = Gson()
+    private lateinit var sessionCallback: FxzMediaLibrarySessionCallback
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val statsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var prefs: SharedPreferences
     private lateinit var settingsPrefs: SharedPreferences
     private lateinit var database: FxzDatabase
     private var fadeJob: Job? = null
     private var isFading = false
+    private var sleepTimerJob: Job? = null
+
+    private var activeTrackingSongId: String? = null
+    private var activeTrackingTitle: String = ""
+    private var activeTrackingArtist: String = ""
+    private var activeTrackingThumbnail: String = ""
+    private var activeTrackingDuration: Long = 0L
+    private var activePlaybackStartMs: Long = 0L
+    private var accumulatedListeningMs: Long = 0L
 
     private var playerCache: SimpleCache? = null
     private var downloadCache: SimpleCache? = null
@@ -118,19 +147,78 @@ class PlaybackService : MediaLibraryService() {
     private val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var consecutiveErrorCount = 0
 
-    private val eqUpdateReceiver = object : BroadcastReceiver() {
+    private val dspUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_EQ_UPDATE) applyEqFromPrefs()
+            when (intent?.action) {
+                ACTION_EQ_UPDATE -> {
+                    val eqPrefs = getSharedPreferences("eq_prefs", MODE_PRIVATE)
+                    audioEffectManager.applyEqFromPrefs(eqPrefs)
+                }
+                ACTION_FX_UPDATE -> {
+                    val fxPrefs = getSharedPreferences("audio_fx_prefs", MODE_PRIVATE)
+                    audioEffectManager.applyFxFromPrefs(fxPrefs)
+                }
+            }
         }
     }
 
     private val sleepTimerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ACTION_SLEEP_TIMER_EXPIRE) return
-            val player   = mediaSession?.player ?: return
-            val fadeSecs = intent.getIntExtra(EXTRA_FADE_DURATION_S, 0)
-            fadeAndPause(player, fadeSecs)
+            when (intent?.action) {
+                ACTION_SLEEP_TIMER_START -> {
+                    val minutes = intent.getIntExtra(EXTRA_SLEEP_MINUTES, 0)
+                    startSleepTimer(minutes)
+                }
+                ACTION_SLEEP_TIMER_CANCEL -> {
+                    cancelSleepTimer()
+                }
+                ACTION_SLEEP_TIMER_EXPIRE -> {
+                    val player   = mediaSession?.player ?: return
+                    val fadeSecs = intent.getIntExtra(EXTRA_FADE_DURATION_S, 0)
+                    fadeAndPause(player, fadeSecs)
+                }
+            }
         }
+    }
+
+    fun startSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            cancelSleepTimer()
+            return
+        }
+        sleepTimerTotalMinutes = minutes
+        sleepTimerRemainingMs = minutes * 60_000L
+        isSleepTimerActive = true
+
+        sleepTimerJob = serviceScope.launch {
+            val player = mediaSession?.player
+            while (sleepTimerRemainingMs > 0 && isActive) {
+                delay(1000L)
+                sleepTimerRemainingMs = (sleepTimerRemainingMs - 1000L).coerceAtLeast(0L)
+
+                if (sleepTimerRemainingMs <= 120_000L && player != null) {
+                    val fraction = (sleepTimerRemainingMs.toFloat() / 120_000f).coerceIn(0f, 1f)
+                    player.volume = (fraction.pow(1.5f)) * currentNormalizedVolume()
+                }
+            }
+            if (isActive) {
+                player?.pause()
+                player?.volume = currentNormalizedVolume()
+                isSleepTimerActive = false
+                sleepTimerRemainingMs = 0L
+                sleepTimerTotalMinutes = 0
+            }
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        isSleepTimerActive = false
+        sleepTimerRemainingMs = 0L
+        sleepTimerTotalMinutes = 0
+        mediaSession?.player?.volume = currentNormalizedVolume()
     }
 
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
@@ -187,6 +275,25 @@ class PlaybackService : MediaLibraryService() {
         if (isFading) { fadeJob?.cancel(); isFading = false; player.volume = currentNormalizedVolume() }
     }
 
+    private var inactivityJob: Job? = null
+
+    private fun startInactivityTimer() {
+        inactivityJob?.cancel()
+        inactivityJob = serviceScope.launch {
+            delay(15 * 60 * 1000L)
+            if (mediaSession?.player?.isPlaying != true) {
+                Log.i("PlaybackService", "Inactivity timeout of 15 minutes reached while paused. Releasing foreground service.")
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+    }
+
+    private fun cancelInactivityTimer() {
+        inactivityJob?.cancel()
+        inactivityJob = null
+    }
+
     override fun onCreate() {
         super.onCreate()
         prefs        = getSharedPreferences("playback_state", MODE_PRIVATE)
@@ -200,9 +307,9 @@ class PlaybackService : MediaLibraryService() {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 15_000,
-                120_000,
-                5_000,
-                10_000
+                60_000,
+                1_000,
+                2_000
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -228,34 +335,116 @@ class PlaybackService : MediaLibraryService() {
         if (savedSpeed != 1.0f) player.playbackParameters = PlaybackParameters(savedSpeed)
 
         exoPlayerInstance = player
+        instance = this
         AudioOutputManager(this).restoreSavedRoute()
         currentAudioSessionId = player.audioSessionId
-        initEqualizer(player.audioSessionId)
+        audioEffectManager = AudioEffectManager(this)
+        audioEffectManager.attachSession(player.audioSessionId)
 
-        val eqFilter    = IntentFilter(ACTION_EQ_UPDATE)
-        val sleepFilter = IntentFilter(ACTION_SLEEP_TIMER_EXPIRE)
-        ContextCompat.registerReceiver(this, eqUpdateReceiver, eqFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        val dspFilter = IntentFilter().apply {
+            addAction(ACTION_EQ_UPDATE)
+            addAction(ACTION_FX_UPDATE)
+        }
+        val sleepFilter = IntentFilter().apply {
+            addAction(ACTION_SLEEP_TIMER_EXPIRE)
+            addAction(ACTION_SLEEP_TIMER_START)
+            addAction(ACTION_SLEEP_TIMER_CANCEL)
+        }
+        ContextCompat.registerReceiver(this, dspUpdateReceiver, dspFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         ContextCompat.registerReceiver(this, sleepTimerReceiver, sleepFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioInputFormatChanged(
+                eventTime: AnalyticsListener.EventTime,
+                format: Format,
+                decoderReuseEvaluation: DecoderReuseEvaluation?
+            ) {
+                val mediaId = player.currentMediaItem?.mediaId ?: ""
+                val sampleRate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else -1
+                val bitrate = if (format.bitrate != Format.NO_VALUE) {
+                    format.bitrate
+                } else if (format.averageBitrate != Format.NO_VALUE) {
+                    format.averageBitrate
+                } else if (format.peakBitrate != Format.NO_VALUE) {
+                    format.peakBitrate
+                } else {
+                    -1
+                }
+                val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else -1
+                val mime = format.sampleMimeType ?: format.containerMimeType ?: ""
+                val codecs = format.codecs ?: ""
+
+                val extras = Bundle().apply {
+                    putString(EXTRA_AUDIO_SONG_ID, mediaId)
+                    putString(EXTRA_AUDIO_MIME, mime)
+                    putInt(EXTRA_AUDIO_BITRATE, bitrate)
+                    putInt(EXTRA_AUDIO_SAMPLE_RATE, sampleRate)
+                    putInt(EXTRA_AUDIO_CHANNELS, channels)
+                    putString(EXTRA_AUDIO_CODECS, codecs)
+                }
+                mediaSession?.setSessionExtras(extras)
+            }
+        })
 
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 currentAudioSessionId = audioSessionId
-                initEqualizer(audioSessionId)
+                audioEffectManager.attachSession(audioSessionId)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying) cancelFadeIfActive(player)
+                if (!isPlaying) {
+                    if (activePlaybackStartMs > 0L) {
+                        accumulatedListeningMs += (System.currentTimeMillis() - activePlaybackStartMs).coerceAtLeast(0L)
+                        activePlaybackStartMs = 0L
+                    }
+                    crossfadeJob?.cancel()
+                    cancelFadeIfActive(player)
+                    startInactivityTimer()
+                } else {
+                    if (activePlaybackStartMs == 0L) {
+                        activePlaybackStartMs = System.currentTimeMillis()
+                    }
+                    cancelInactivityTimer()
+                    startCrossfadeCheck(player)
+                }
                 savePlaybackState(player)
+                updateWidget(player)
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                consecutiveErrorCount = 0
+                startTrackingTrack(mediaItem, player.isPlaying, player.duration)
                 applyLoudnessNormalization(player)
                 savePlaybackState(player)
                 preloadUpcoming(player)
                 startCrossfadeCheck(player)
+                updateWidget(player)
+                mediaSession?.let { session ->
+                    serviceScope.launch {
+                        sessionCallback.updateCustomLayout(session)
+                    }
+                }
             }
-            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) { savePlaybackState(player) }
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                mediaSession?.let { session ->
+                    serviceScope.launch {
+                        sessionCallback.updateCustomLayout(session)
+                    }
+                }
+            }
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                savePlaybackState(player)
+                if (player.isPlaying) {
+                    startCrossfadeCheck(player)
+                }
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     consecutiveErrorCount = 0
+                    if (player.duration > 0L && activeTrackingDuration <= 0L) {
+                        activeTrackingDuration = player.duration
+                    }
+                } else if (playbackState == Player.STATE_ENDED) {
+                    recordCurrentTrackPlayback("ended")
                 }
             }
             override fun onPlayerErrorChanged(error: PlaybackException?) {
@@ -277,12 +466,12 @@ class PlaybackService : MediaLibraryService() {
                 val currentPosition = player.currentPosition
                 
                 consecutiveErrorCount++
-                val maxRetries = 5
+                val maxRetries = 2
                 if (consecutiveErrorCount > maxRetries) {
                     consecutiveErrorCount = 0
                     Log.w("PlaybackService", "Too many errors for this track, skipping to next")
                     if (player.hasNextMediaItem()) {
-                        player.seekToNext()
+                        player.seekToNextMediaItem()
                         player.prepare()
                         player.playWhenReady = true
                     } else {
@@ -291,17 +480,12 @@ class PlaybackService : MediaLibraryService() {
                     return
                 }
                 
-                val delayMs = (500L * consecutiveErrorCount).coerceAtMost(3000L)
+                val delayMs = (500L * consecutiveErrorCount).coerceAtMost(2000L)
                 Log.i("PlaybackService", "Retrying playback (attempt $consecutiveErrorCount, delay ${delayMs}ms)...")
                 serviceScope.launch {
                     kotlinx.coroutines.delay(delayMs)
                     if (currentIndex != C.INDEX_UNSET && player.currentMediaItemIndex == currentIndex) {
-                        val currentItem = player.getMediaItemAt(currentIndex)
-                        if (currentItem != null) {
-                            player.setMediaItem(currentItem, currentPosition)
-                        } else {
-                            player.seekTo(currentIndex, currentPosition)
-                        }
+                        player.seekTo(currentIndex, currentPosition)
                         player.prepare()
                         player.playWhenReady = true
                     }
@@ -321,8 +505,9 @@ class PlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        sessionCallback = FxzMediaLibrarySessionCallback(this, database, serviceScope)
         mediaSession = MediaLibraryService.MediaLibrarySession.Builder(
-            this, player, FxzMediaLibrarySessionCallback()
+            this, player, sessionCallback
         )
             .setSessionActivity(sessionActivityIntent)
             .build()
@@ -478,9 +663,17 @@ class PlaybackService : MediaLibraryService() {
         crossfadeJob = serviceScope.launch {
             while (coroutineContext.isActive && player.isPlaying) {
                 val duration = player.duration
+                if (duration <= 0 || duration == C.TIME_UNSET) {
+                    delay(1000L)
+                    continue
+                }
+                if (!player.hasNextMediaItem()) {
+                    delay(2000L)
+                    continue
+                }
                 val position = player.currentPosition
                 val remainingMs = duration - position
-                if (remainingMs in 1L..CROSSFADE_MS && player.mediaItemCount > player.currentMediaItemIndex + 1) {
+                if (remainingMs in 1L..CROSSFADE_MS) {
                     android.util.Log.d("PlaybackService", "Crossfade: fading out, remaining=${remainingMs}ms")
                     val steps = 30
                     val stepMs = CROSSFADE_MS / steps
@@ -504,12 +697,19 @@ class PlaybackService : MediaLibraryService() {
                     }
                     break
                 }
-                delay(200)
+                val pollDelay = when {
+                    remainingMs > 30_000L -> 10_000L
+                    remainingMs > 10_000L -> 2_000L
+                    remainingMs > 5_000L -> 500L
+                    else -> 200L
+                }
+                delay(pollDelay)
             }
         }
     }
 
     private fun preloadUpcoming(player: Player) {
+        if (!player.playWhenReady) return
         val currentIndex = player.currentMediaItemIndex
         val itemCount = player.mediaItemCount
         if (currentIndex < 0 || itemCount == 0) return
@@ -517,10 +717,24 @@ class PlaybackService : MediaLibraryService() {
         if (currentIndex >= upperBound) return
 
         val upcomingIds = mutableListOf<String>()
+        val upcomingArtworkUris = mutableListOf<Uri>()
         for (i in (currentIndex + 1)..upperBound) {
             val item = player.getMediaItemAt(i)
-            val id = item.mediaId ?: continue
+            val id = item.mediaId
             if (id.length == 11) upcomingIds.add(id)
+            if (i <= currentIndex + 2) {
+                item.mediaMetadata.artworkUri?.let { upcomingArtworkUris.add(it) }
+            }
+        }
+
+        for (artworkUri in upcomingArtworkUris) {
+            val request = ImageRequest.Builder(this@PlaybackService)
+                .data(artworkUri)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .precision(Precision.INEXACT)
+                .build()
+            imageLoader.enqueue(request)
         }
 
         preloadScope.launch {
@@ -546,6 +760,7 @@ class PlaybackService : MediaLibraryService() {
         if (!enabled) {
             prefs.edit { putFloat("current_normalized_volume", 1.0f) }
             player.volume = 1.0f
+            audioEffectManager.setLoudnessEnhancerGain(0, false)
             return
         }
 
@@ -553,11 +768,22 @@ class PlaybackService : MediaLibraryService() {
         serviceScope.launch(Dispatchers.IO) {
             val existing = database.songLoudnessDao().get(mediaId)
             val gainDb = existing?.gainDb ?: estimateAndStoreGain(mediaId)
-            val gainLinear = dbToLinear(gainDb)
-            val normalized = (gainLinear * 0.92f).coerceIn(0.35f, 1.0f)
-            prefs.edit { putFloat("current_normalized_volume", normalized) }
+
             withContext(Dispatchers.Main) {
-                if (!isFading) player.volume = normalized
+                if (gainDb <= 0f) {
+                    // Software linear attenuation
+                    val gainLinear = dbToLinear(gainDb)
+                    val normalized = (gainLinear * 0.92f).coerceIn(0.35f, 1.0f)
+                    prefs.edit { putFloat("current_normalized_volume", normalized) }
+                    if (!isFading) player.volume = normalized
+                    audioEffectManager.setLoudnessEnhancerGain(0, false)
+                } else {
+                    // Clean boost via hardware LoudnessEnhancer (capped at +600 mB) without digital clipping
+                    prefs.edit { putFloat("current_normalized_volume", 1.0f) }
+                    if (!isFading) player.volume = 1.0f
+                    val gainMb = (gainDb * 100f).roundToInt().coerceIn(0, 600)
+                    audioEffectManager.setLoudnessEnhancerGain(gainMb, true)
+                }
             }
         }
     }
@@ -577,57 +803,96 @@ class PlaybackService : MediaLibraryService() {
 
     private fun dbToLinear(gainDb: Float): Float = 10.0.pow((gainDb / 20.0).toDouble()).toFloat()
 
-    private fun initEqualizer(audioSessionId: Int) {
-        if (audioSessionId == 0) return
-        if (audioSessionId == currentAudioSessionId && equalizer != null) { applyEqFromPrefs(); return }
-        try {
-            equalizer?.release()
-            equalizer = null
-            equalizer = Equalizer(0, audioSessionId)
-            applyEqFromPrefs()
-        } catch (e: Exception) {
-            android.util.Log.e("PlaybackService", "initEqualizer failed", e)
+    private fun recordCurrentTrackPlayback(reason: String = "") {
+        if (activePlaybackStartMs > 0L) {
+            accumulatedListeningMs += (System.currentTimeMillis() - activePlaybackStartMs).coerceAtLeast(0L)
+            activePlaybackStartMs = 0L
+        }
+
+        val songId = activeTrackingSongId ?: return
+        val elapsed = accumulatedListeningMs
+        if (elapsed < 5_000L) {
+            accumulatedListeningMs = 0L
+            return
+        }
+
+        val title = activeTrackingTitle
+        val artist = activeTrackingArtist
+        val thumbnail = activeTrackingThumbnail
+        val duration = if (activeTrackingDuration > 0L) activeTrackingDuration else elapsed
+        val now = System.currentTimeMillis()
+
+        accumulatedListeningMs = 0L
+
+        statsScope.launch {
+            try {
+                // 1. Playback History
+                database.playbackHistoryDao().insert(
+                    PlaybackHistoryEntity(
+                        songId = songId,
+                        title = title,
+                        artist = artist,
+                        thumbnail = thumbnail,
+                        duration = duration,
+                        playedAt = now,
+                        listenedMs = elapsed
+                    )
+                )
+
+                // 2. Song Stats
+                val existingStats = database.songStatsDao().getAll()
+                val existing = existingStats.find { it.songId == songId }
+                val newPlayCount = (existing?.playCount ?: 0) + 1
+                val newTotalMs = (existing?.totalListenedMs ?: 0L) + elapsed
+                val statEntity = SongStatEntity(
+                    songId = songId,
+                    title = if (title.isNotBlank()) title else (existing?.title ?: ""),
+                    artist = if (artist.isNotBlank()) artist else (existing?.artist ?: ""),
+                    coverUrl = if (thumbnail.isNotBlank()) thumbnail else existing?.coverUrl,
+                    playCount = newPlayCount,
+                    totalListenedMs = newTotalMs,
+                    lastPlayedAt = now
+                )
+                database.songStatsDao().upsertAll(listOf(statEntity))
+
+                // 3. Song Meta
+                val existingMetas = database.songMetaDao().getAll()
+                val existingMeta = existingMetas.find { it.songId == songId }
+                val metaEntity = SongMetaEntity(
+                    songId = songId,
+                    playCount = newPlayCount,
+                    lastPlayed = now,
+                    isLiked = existingMeta?.isLiked ?: false
+                )
+                database.songMetaDao().upsert(metaEntity)
+
+                // 4. Publish Event
+                EventBus.tryPublish(UiEvent.SongStatsChanged(songId, newPlayCount, now))
+            } catch (e: Exception) {
+                Log.w("PlaybackService", "Failed to record playback stats: ${e.message}")
+            }
         }
     }
 
-    private fun applyEqFromPrefs() {
-        val eq        = equalizer ?: return
-        val eqPrefs   = getSharedPreferences("eq_prefs", MODE_PRIVATE)
-        val isEnabled = eqPrefs.getBoolean(EXTRA_EQ_ENABLED, true)
-        try { eq.enabled = isEnabled } catch (_: Exception) {}
-        if (!isEnabled) return
-
-        val profileId = eqPrefs.getString(EXTRA_EQ_PROFILE, "flat") ?: "flat"
-        val bands: List<EqBand>? = when (profileId) {
-            "__temp__" -> {
-                val json = eqPrefs.getString("temp_bands", null)
-                if (json != null) {
-                    val type = object : TypeToken<List<EqBand>>() {}.type
-                    try { gson.fromJson(json, type) } catch (_: Exception) { null }
-                } else null
-            }
-            else -> {
-                val preset = PRESET_PROFILES.find { it.id == profileId }
-                if (preset != null) {
-                    preset.bands
-                } else {
-                    val customJson = eqPrefs.getString("custom_profiles", null)
-                    if (customJson != null) {
-                        val type = object : TypeToken<List<EqProfile>>() {}.type
-                        try {
-                            val profiles: List<EqProfile> = gson.fromJson(customJson, type) ?: emptyList()
-                            profiles.find { it.id == profileId }?.bands
-                        } catch (_: Exception) { null }
-                    } else null
-                }
-            }
+    private fun startTrackingTrack(item: MediaItem?, isPlaying: Boolean, duration: Long = 0L) {
+        recordCurrentTrackPlayback("startTrackingNew")
+        if (item == null) {
+            activeTrackingSongId = null
+            activeTrackingTitle = ""
+            activeTrackingArtist = ""
+            activeTrackingThumbnail = ""
+            activeTrackingDuration = 0L
+            activePlaybackStartMs = 0L
+            accumulatedListeningMs = 0L
+            return
         }
-        val numberOfBands = eq.numberOfBands.toInt()
-        bands?.forEach { band ->
-            if (band.index < numberOfBands) {
-                try { eq.setBandLevel(band.index.toShort(), (band.gainDb * 100).toInt().toShort()) } catch (_: Exception) {}
-            }
-        }
+        activeTrackingSongId = item.mediaId
+        activeTrackingTitle = item.mediaMetadata.title?.toString() ?: ""
+        activeTrackingArtist = item.mediaMetadata.artist?.toString() ?: ""
+        activeTrackingThumbnail = item.mediaMetadata.artworkUri?.toString() ?: ""
+        activeTrackingDuration = if (duration > 0L) duration else 0L
+        accumulatedListeningMs = 0L
+        activePlaybackStartMs = if (isPlaying) System.currentTimeMillis() else 0L
     }
 
     private fun savePlaybackState(player: Player) {
@@ -641,6 +906,23 @@ class PlaybackService : MediaLibraryService() {
             putString("last_title",     meta.title?.toString() ?: "")
             putString("last_artist",    meta.artist?.toString() ?: "")
             putString("last_cover_url", coverUrl)
+        }
+    }
+
+    private fun updateWidget(player: Player) {
+        val item = player.currentMediaItem
+        val title = item?.mediaMetadata?.title?.toString() ?: getString(R.string.widget_no_track)
+        val artist = item?.mediaMetadata?.artist?.toString() ?: getString(R.string.widget_no_artist)
+        val isPlaying = player.isPlaying
+        val coverUrl = item?.mediaMetadata?.artworkUri?.toString()
+        serviceScope.launch {
+            com.fxzmusic.app.widget.MusicWidgetUpdater.update(
+                context = this@PlaybackService,
+                title = title,
+                artist = artist,
+                isPlaying = isPlaying,
+                coverUrl = coverUrl
+            )
         }
     }
 
@@ -675,17 +957,22 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibraryService.MediaLibrarySession? = mediaSession as? MediaLibraryService.MediaLibrarySession
 
     override fun onDestroy() {
+        cancelSleepTimer()
+        recordCurrentTrackPlayback("onDestroy")
         mediaSession?.player?.pause()
         abandonAudioFocus()
+        inactivityJob?.cancel()
         fadeJob?.cancel()
         preloadScope.cancel()
         serviceScope.cancel()
+        statsScope.cancel()
         currentAudioSessionId = 0
-        try { unregisterReceiver(eqUpdateReceiver)   } catch (_: Exception) {}
+        try { unregisterReceiver(dspUpdateReceiver)  } catch (_: Exception) {}
         try { unregisterReceiver(sleepTimerReceiver) } catch (_: Exception) {}
-        try { equalizer?.release()                   } catch (_: Exception) {}
+        try { audioEffectManager.release()           } catch (_: Exception) {}
         mediaSession?.run { player.release(); release(); mediaSession = null }
         exoPlayerInstance = null
+        if (instance == this) instance = null
         try { playerCache?.release() } catch (_: Exception) {}
         super.onDestroy()
     }

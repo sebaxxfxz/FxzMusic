@@ -98,6 +98,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -158,8 +159,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var launchAction by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        launchAction = intent?.getStringExtra("action")
         enableEdgeToEdge()
         enableHighRefreshRate()
         checkPermissionAndScan()
@@ -168,10 +172,20 @@ class MainActivity : ComponentActivity() {
             val currentTheme = settingsViewModel.currentTheme()
             CompositionLocalProvider(LocalFxzTheme provides currentTheme) {
                 FxzMusicTheme(theme = currentTheme) {
-                    MainScreen(settingsViewModel = settingsViewModel)
+                    MainScreen(
+                        settingsViewModel = settingsViewModel,
+                        launchAction = launchAction,
+                        onClearLaunchAction = { launchAction = null }
+                    )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        launchAction = intent.getStringExtra("action")
     }
 
     private fun enableHighRefreshRate() {
@@ -229,7 +243,9 @@ fun MainScreen(
     settingsViewModel: PlaybackSettingsViewModel = viewModel(),
     fxViewModel: AudioFxViewModel = viewModel(),
     playerStateManager: com.fxzmusic.app.viewmodel.PlayerStateManager = viewModel(),
-    youTubeViewModel: YouTubeMusicViewModel = viewModel()
+    youTubeViewModel: YouTubeMusicViewModel = viewModel(),
+    launchAction: String? = null,
+    onClearLaunchAction: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -263,7 +279,10 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     val miniPlayerShouldBeVisible by remember {
         androidx.compose.runtime.derivedStateOf {
-            playerStateManager.showMiniPlayer && musicPlayerViewModel.currentSong != null && !playerStateManager.isFullPlayerVisible
+            playerStateManager.showMiniPlayer &&
+                musicPlayerViewModel.currentSong != null &&
+                !playerStateManager.isFullPlayerVisible &&
+                !playerStateManager.isCarModeVisible
         }
     }
     val latestMiniPlayerShouldBeVisible = rememberUpdatedState(miniPlayerShouldBeVisible)
@@ -273,6 +292,28 @@ fun MainScreen(
                 musicPlayerViewModel.playNext()
             }
         })
+    }
+
+    var hasRestoredCarMode by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(settingsViewModel.carModePersistent) {
+        if (!hasRestoredCarMode && settingsViewModel.carModePersistent) {
+            playerStateManager.openCarMode()
+            hasRestoredCarMode = true
+        }
+    }
+
+    LaunchedEffect(launchAction) {
+        when (launchAction) {
+            "open_car_mode" -> {
+                settingsViewModel.setCarModePersistent(true)
+                playerStateManager.openCarMode()
+                onClearLaunchAction()
+            }
+            "open_player" -> {
+                playerStateManager.openFullPlayer()
+                onClearLaunchAction()
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -304,6 +345,7 @@ fun MainScreen(
                 }
                 is com.fxzmusic.app.util.UiEvent.SpeedRestored -> {}
                 is com.fxzmusic.app.util.UiEvent.LibraryRefreshRequested -> {}
+                is com.fxzmusic.app.util.UiEvent.OfflineModeChanged -> {}
                 is com.fxzmusic.app.util.UiEvent.TrackEnded -> {
                     if (settingsViewModel.sleepAfterTrack) {
                         musicPlayerViewModel.pauseIfPlaying()
@@ -330,8 +372,6 @@ fun MainScreen(
     LaunchedEffect(musicPlayerViewModel.currentSong, settingsViewModel.dynamicColorBySong) {
         val song = musicPlayerViewModel.currentSong
         if (song != null) playerStateManager.showMiniPlayer() else playerStateManager.hideMiniPlayer()
-        if (song != null) statsViewModel.onSongStarted(song)
-        else statsViewModel.onSongEnded()
 
         if (song != null && settingsViewModel.dynamicColorBySong) {
             val url = song.coverUrl ?: song.youtubeThumbnailUrl ?: song.filePath
@@ -357,19 +397,6 @@ fun MainScreen(
 
     LaunchedEffect(musicPlayerViewModel.isPlaying) {
         if (musicPlayerViewModel.isPlaying) playerStateManager.showMiniPlayer()
-    }
-
-    LaunchedEffect(musicPlayerViewModel.isPlaying, musicPlayerViewModel.currentSong) {
-        if (!musicPlayerViewModel.isPlaying) return@LaunchedEffect
-        repeat(20) {
-            val sessionId = PlaybackService.currentAudioSessionId
-            if (sessionId != 0) {
-                equalizerViewModel.attachToAudioSession(sessionId)
-                fxViewModel.attachToSession(context, sessionId)
-                return@LaunchedEffect
-            }
-            delay(150)
-        }
     }
 
     LaunchedEffect(Unit) {
@@ -455,6 +482,8 @@ fun MainScreen(
         BottomNavItem("Ajustes",    Icons.Filled.Settings,    Icons.Outlined.Settings)
     )
 
+    val saveableStateHolder = rememberSaveableStateHolder()
+
     CompositionLocalProvider(LocalFxzTheme provides currentTheme) {
     SharedTransitionLayout {
         Box(modifier = Modifier.fillMaxSize().background(currentTheme.background)) {
@@ -462,12 +491,18 @@ fun MainScreen(
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbarHostState) },
                 bottomBar = {
-                    BottomNavBar(
-                        tabs = tabs,
-                        selectedTab = selectedTab,
-                        onTabSelected = { selectedTab = it },
-                        accent = currentTheme.accent
-                    )
+                    AnimatedVisibility(
+                        visible = !playerStateManager.isFullPlayerVisible && !playerStateManager.isCarModeVisible,
+                        enter = slideInVertically(tween(300)) { it } + fadeIn(tween(200)),
+                        exit = slideOutVertically(tween(250)) { it } + fadeOut(tween(150))
+                    ) {
+                        BottomNavBar(
+                            tabs = tabs,
+                            selectedTab = selectedTab,
+                            onTabSelected = { selectedTab = it },
+                            accent = currentTheme.accent
+                        )
+                    }
                 }
             ) { innerPadding ->
                 AnimatedContent(
@@ -478,7 +513,8 @@ fun MainScreen(
                     label = "tab_transition",
                     modifier = Modifier.padding(innerPadding)
                 ) { targetTab ->
-                    when (targetTab) {
+                    saveableStateHolder.SaveableStateProvider(key = targetTab) {
+                        when (targetTab) {
                         0 -> YouTubeNavHost(
                             modifier = Modifier.fillMaxSize(),
                             homeContent = { navController ->
@@ -712,7 +748,7 @@ fun MainScreen(
                                 )
                             },
                             albumContent = { albumName, navController ->
-                                val album = libraryViewModel.allAlbums.find { it.name == albumName }
+                                val album = libraryViewModel.allAlbums.value.find { it.name == albumName }
                                 if (album != null) {
                                     val playlist = Playlist(
                                         id        = album.name.hashCode().toLong(),
@@ -757,7 +793,7 @@ fun MainScreen(
                                 }
                             },
                             artistContent = { artistName, navController ->
-                                val artist = libraryViewModel.allArtists.find { it.name == artistName }
+                                val artist = libraryViewModel.allArtists.value.find { it.name == artistName }
                                 if (artist != null) {
                                     val playlist = Playlist(
                                         id        = artist.name.hashCode().toLong(),
@@ -804,7 +840,7 @@ fun MainScreen(
                                 }
                             },
                             folderContent = { folderPath, navController ->
-                                val folder = libraryViewModel.allFolders.find { it.name == folderPath }
+                                val folder = libraryViewModel.allFolders.value.find { it.name == folderPath }
                                 if (folder != null) {
                                     FolderDetailScreen(
                                         folderName   = folder.name,
@@ -945,6 +981,10 @@ fun MainScreen(
                             onPausePlayback = { musicPlayerViewModel.pauseIfPlaying() },
                             onOpenEqualizer = { playerStateManager.showEqualizer() },
                             onOpenAudioFx = { playerStateManager.showAudioFx() },
+                            onOpenCarMode = {
+                                settingsViewModel.setCarModePersistent(true)
+                                playerStateManager.openCarMode()
+                            },
                             allSongs = libraryViewModel.allSongs
                         )
                     }
@@ -1082,7 +1122,22 @@ fun MainScreen(
                             onToggleRepeat   = { musicPlayerViewModel.toggleRepeatMode() },
                             onClose          = { playerStateManager.closeFullPlayer() },
                             onThemeRotate    = { rotateAccent() },
+                            onOpenCarMode    = {
+                                settingsViewModel.setCarModePersistent(true)
+                                playerStateManager.openCarMode()
+                            },
                             onToggleLike     = { libraryViewModel.toggleLike(fullPlayerSong.id, fullPlayerSong) },
+                            onOpenArtist     = { browseId ->
+                                playerStateManager.closeFullPlayer()
+                                selectedTab = 0
+                                youTubeViewModel.openArtist(browseId)
+                            },
+                            onOpenAlbum      = { browseId ->
+                                playerStateManager.closeFullPlayer()
+                                selectedTab = 0
+                                youTubeViewModel.openAlbum(browseId)
+                            },
+                            youTubeMusicViewModel = youTubeViewModel,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this,
                             modifier         = Modifier.fillMaxSize(),
@@ -1115,7 +1170,8 @@ fun MainScreen(
                             onShareSong = {
                                 com.fxzmusic.app.util.ShareUtils.shareSong(context, fullPlayerSong)
                             },
-                            playerBackgroundStyle = settingsViewModel.playerBackgroundStyle
+                            playerBackgroundStyle = settingsViewModel.playerBackgroundStyle,
+                            getCurrentPositionMs = { musicPlayerViewModel.getCurrentPositionMs() }
                         )
                     }
 
@@ -1128,9 +1184,42 @@ fun MainScreen(
                 }
             }
 
+            androidx.activity.compose.BackHandler(enabled = playerStateManager.isCarModeVisible) {
+                settingsViewModel.setCarModePersistent(false)
+                playerStateManager.closeCarMode()
+            }
+
+            AnimatedContent(
+                targetState = playerStateManager.isCarModeVisible,
+                transitionSpec = {
+                    slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                    ) + fadeIn(spring(dampingRatio = Spring.DampingRatioNoBouncy)) togetherWith
+                    slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+                    ) + fadeOut(tween(200))
+                },
+                label = "car_mode_dashboard_transition"
+            ) { visible ->
+                if (visible) {
+                    CarModeDashboardScreen(
+                        musicPlayerViewModel = musicPlayerViewModel,
+                        libraryViewModel = libraryViewModel,
+                        youTubeViewModel = youTubeViewModel,
+                        settingsViewModel = settingsViewModel,
+                        onClose = {
+                            settingsViewModel.setCarModePersistent(false)
+                            playerStateManager.closeCarMode()
+                        }
+                    )
+                }
+            }
+
             SleepTimerBadge(
                 settingsViewModel = settingsViewModel,
-                isFullPlayerVisible = playerStateManager.isFullPlayerVisible,
+                isFullPlayerVisible = playerStateManager.isFullPlayerVisible || playerStateManager.isCarModeVisible,
                 accent = currentTheme.accent,
                 background = currentTheme.surfaceVariant
             )
@@ -1164,6 +1253,7 @@ fun MainScreen(
             }
 
         }
+    }
     }
     }
 
@@ -1306,11 +1396,11 @@ fun BottomNavBar(
 
                 Box(
                     modifier = Modifier
-                        .offset(x = indicatorOffset)
                         .width(tabWidth)
                         .fillMaxHeight()
                         .padding(vertical = 6.dp, horizontal = 5.dp)
                         .graphicsLayer {
+                            translationX = indicatorOffset.toPx()
                             scaleX = capsuleStretchScaleX
                         }
                         .clip(RoundedCornerShape(24.dp))

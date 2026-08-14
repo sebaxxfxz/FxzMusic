@@ -34,6 +34,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.serialization.protobuf)
 
+    compileOnly(platform(libs.compose.bom))
+    compileOnly(libs.compose.runtime)
+
     coreLibraryDesugaring(libs.desugaring)
 
     testImplementation(libs.junit)

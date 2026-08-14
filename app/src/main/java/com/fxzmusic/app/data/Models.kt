@@ -5,7 +5,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
-@Stable
+@Immutable
 data class Song(
     val id: String,
     val title: String,
@@ -23,12 +23,7 @@ data class Song(
     val isYouTube: Boolean = false,
     val youtubeVideoId: String? = null,
     val youtubeThumbnailUrl: String? = null,
-) {
-    
-    @Transient
-    var youtubeStreamUrl: String? = null
-        internal set
-}
+)
 
 @Stable
 data class Playlist(
@@ -141,3 +136,8 @@ data class AudioMetadata(
         }
     } ?: "N/A"
 }
+
+@Immutable
+data class ImmutableListWrapper<T>(
+    val items: List<T> = emptyList()
+) : List<T> by items

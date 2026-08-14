@@ -98,6 +98,9 @@ object YouTube {
         set(value) {
             innerTube.dataSyncId = value
         }
+    fun setCacheDirectory(dir: java.io.File) {
+        innerTube.cacheDir = dir
+    }
     var cookie: String?
         get() = innerTube.cookie
         set(value) {

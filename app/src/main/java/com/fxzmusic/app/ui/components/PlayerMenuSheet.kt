@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Timer
@@ -36,9 +39,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fxzmusic.app.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +56,10 @@ fun PlayerMenuSheet(
     onSongInfo: () -> Unit,
     onComments: () -> Unit,
     onThemeChange: () -> Unit,
+    onOpenCarMode: () -> Unit = {},
     onSleepTimer: () -> Unit = {},
+    onSimilarSongs: () -> Unit = {},
+    onStartRadio: () -> Unit = {},
     lyricsOffsetMs: Long = 0L,
     hasSyncedLyrics: Boolean = false,
     onLyricsOffsetPlus: () -> Unit = {},
@@ -81,6 +89,24 @@ fun PlayerMenuSheet(
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            PlayerMenuItem(
+                icon = Icons.Filled.AutoAwesome,
+                label = stringResource(R.string.action_similar_songs),
+                accentColor = true,
+                onClick = { onDismiss(); onSimilarSongs() }
+            )
+            PlayerMenuItem(
+                icon = Icons.Filled.Radio,
+                label = stringResource(R.string.action_start_radio),
+                accentColor = true,
+                onClick = { onDismiss(); onStartRadio() }
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
 
             PlayerMenuItem(
@@ -118,6 +144,11 @@ fun PlayerMenuSheet(
                 icon = Icons.Filled.Palette,
                 label = "Cambiar tema de acento",
                 onClick = { onDismiss(); onThemeChange() }
+            )
+            PlayerMenuItem(
+                icon = Icons.Filled.DirectionsCar,
+                label = stringResource(R.string.action_car_mode),
+                onClick = { onDismiss(); onOpenCarMode() }
             )
             PlayerMenuItem(
                 icon = Icons.Filled.Timer,

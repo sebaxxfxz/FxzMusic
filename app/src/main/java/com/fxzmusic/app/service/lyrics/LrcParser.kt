@@ -10,20 +10,18 @@ object LrcParser {
     private val TIME_TAG_REGEX = Regex("""\[(\d{1,2}):(\d{2})\.(\d{2,3})\]""")
     private val RICH_SYNC_LINE_REGEX = Regex("""\[(\d{1,2}):(\d{2})\.(\d{2,3})\](.+)""")
     private val RICH_SYNC_WORD_REGEX = Regex("""<(\d{1,2}):(\d{2})\.(\d{2,3})>\s*([^<]+)""")
+    private val RICH_SYNC_TAG_CLEAN_REGEX = Regex("""<\d{1,2}:\d{2}\.\d{2,3}>\s*""")
     private val AGENT_REGEX = Regex("""\{agent:([^}]+)\}""")
     private val BACKGROUND_REGEX = Regex("""^\{bg\}""")
     private val WORD_DATA_LINE_REGEX = Regex("""^<[^>]*\|.*>$""")
     private val HEX_ENTITY_REGEX = Regex("&#x([0-9a-fA-F]+);")
     private val DEC_ENTITY_REGEX = Regex("&#(\\d+);")
+    private val TIMESTAMP_PARSE_REGEX = Regex("""\[?(\d{1,2}):(\d{2})\.(\d{2,3})\]?""")
 
     fun parseSyncedLyrics(raw: String): List<LyricsLine> = parseLyrics(raw)
 
     fun parseLyrics(lyrics: String): List<LyricsLine> {
-        val unescaped = lyrics.trim()
-
-        val decoded = decodeHtmlEntities(unescaped)
-
-        val lines = decoded.lines()
+        val lines = lyrics.trim().lines()
             .filter { it.isNotBlank() && !it.trim().startsWith("[offset:") }
             .map { it.trim() }
 
@@ -64,7 +62,8 @@ object LrcParser {
             }
 
             val words = parseRichSyncWords(content, index, lines)
-            val plainText = content.replace(Regex("""<\d{1,2}:\d{2}\.\d{2,3}>\s*"""), "").trim()
+            val rawPlainText = content.replace(RICH_SYNC_TAG_CLEAN_REGEX, "").trim()
+            val plainText = decodeHtmlEntities(rawPlainText)
 
             if (plainText.isNotBlank()) {
                 result.add(LyricsLine(timeMs = lineTimeMs, text = plainText, words = words, agent = agent, isBackground = isBackground))
@@ -84,7 +83,7 @@ object LrcParser {
             val fraction = fractionRaw.toLongOrNull() ?: 0L
             val startMs = if (fractionRaw.length == 3) minutes * 60_000L + seconds * 1_000L + fraction
                           else minutes * 60_000L + seconds * 1_000L + fraction * 10L
-            val wordText = match.groupValues[4]
+            val wordText = decodeHtmlEntities(match.groupValues[4])
             val endMs = if (i < matches.size - 1) {
                 val next = matches[i + 1]
                 val nMin = next.groupValues[1].toLongOrNull() ?: 0L
@@ -143,9 +142,11 @@ object LrcParser {
             data.split("|").mapNotNull { entry ->
                 val parts = entry.split(":")
                 if (parts.size == 3) {
-                    LyricsWord(text = parts[0],
-                               startMs = (parts[1].toDoubleOrNull() ?: 0.0).times(1000).toLong(),
-                               endMs = (parts[2].toDoubleOrNull() ?: 0.0).times(1000).toLong())
+                    LyricsWord(
+                        text = decodeHtmlEntities(parts[0]),
+                        startMs = (parts[1].toDoubleOrNull() ?: 0.0).times(1000).toLong(),
+                        endMs = (parts[2].toDoubleOrNull() ?: 0.0).times(1000).toLong()
+                    )
                 } else null
             }.takeIf { it.isNotEmpty() }
         } catch (e: Exception) { null }
@@ -165,14 +166,16 @@ object LrcParser {
         val match = LINE_REGEX.matchEntire(line.trim()) ?: return null
         val timeMatches = TIME_TAG_REGEX.findAll(line).toList()
         if (timeMatches.isEmpty()) return null
-        var text = match.groupValues[4].trim()
+        var rawText = match.groupValues[4].trim()
 
-        val agentMatch = AGENT_REGEX.find(text)
+        val agentMatch = AGENT_REGEX.find(rawText)
         val agent = agentMatch?.groupValues?.get(1)
-        if (agentMatch != null) text = text.replaceFirst(AGENT_REGEX, "")
+        if (agentMatch != null) rawText = rawText.replaceFirst(AGENT_REGEX, "")
 
-        val isBackground = BACKGROUND_REGEX.containsMatchIn(text)
-        if (isBackground) text = text.replaceFirst(BACKGROUND_REGEX, "")
+        val isBackground = BACKGROUND_REGEX.containsMatchIn(rawText)
+        if (isBackground) rawText = rawText.replaceFirst(BACKGROUND_REGEX, "")
+
+        val text = decodeHtmlEntities(rawText)
 
         return timeMatches.map { tm ->
             val min = tm.groupValues[1].toLongOrNull() ?: 0L
@@ -207,8 +210,6 @@ object LrcParser {
         result = result.replace("&amp;", "\u0026")
         return result
     }
-
-    private val TIMESTAMP_PARSE_REGEX = Regex("""\[?(\d{1,2}):(\d{2})\.(\d{2,3})\]?""")
 
     fun parseLrcTimestamp(timestamp: String): Long? {
         return TIMESTAMP_PARSE_REGEX.find(timestamp)?.let { match ->

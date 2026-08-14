@@ -52,17 +52,22 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SongInfoSheet(
     song: Song,
+    audioMetadata: AudioMetadata? = null,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var metadata by remember { mutableStateOf<AudioMetadata?>(null) }
+    var metadata by remember(audioMetadata) { mutableStateOf(audioMetadata) }
     var audioFormat by remember { mutableStateOf<com.fxzmusic.app.util.AudioFormatInfo?>(null) }
 
     val accent = MaterialTheme.colorScheme.primary
 
-    LaunchedEffect(song.filePath) {
-        metadata = withContext(Dispatchers.IO) {
-            song.filePath?.takeIf { it.isNotEmpty() }?.let { MetadataUtils.extractAudioMetadata(it) }
+    LaunchedEffect(song.filePath, audioMetadata) {
+        if (audioMetadata != null) {
+            metadata = audioMetadata
+        } else {
+            metadata = withContext(Dispatchers.IO) {
+                song.filePath?.takeIf { it.isNotEmpty() }?.let { MetadataUtils.extractAudioMetadata(it) }
+            }
         }
         audioFormat = withContext(Dispatchers.IO) {
             song.filePath?.takeIf { it.isNotEmpty() }?.let { AudioFormatDetector.detect(it) }

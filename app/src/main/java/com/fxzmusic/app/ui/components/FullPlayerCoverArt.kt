@@ -62,6 +62,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
@@ -97,7 +100,13 @@ fun FullPlayerCoverArt(
     )
 
     val coverEntranceScale = remember { Animatable(0.85f) }
+    val dragOffsetX = remember { Animatable(0f) }
+    val dragOffsetY = remember { Animatable(0f) }
+    val coroutineScope = rememberCoroutineScope()
+
     LaunchedEffect(currentSong.id) {
+        dragOffsetX.snapTo(0f)
+        dragOffsetY.snapTo(0f)
         coverEntranceScale.snapTo(0.85f)
         coverEntranceScale.animateTo(
             targetValue = 1f,
@@ -151,8 +160,13 @@ fun FullPlayerCoverArt(
                     modifier = Modifier
                         .size(coverSizeDp)
                         .scale(coverScale * pinchScale.floatValue)
+                        .graphicsLayer {
+                            translationX = dragOffsetX.value
+                            translationY = dragOffsetY.value
+                            rotationZ = (dragOffsetX.value / 40f).coerceIn(-10f, 10f)
+                        }
                         .transformable(transformState)
-                        .pointerInput(Unit) {
+                        .pointerInput(songId) {
                             detectDragGestures(
                                 onDragStart = {
                                     totalDragX = 0f
@@ -163,14 +177,74 @@ fun FullPlayerCoverArt(
                                     val absX = abs(totalDragX)
                                     val absY = abs(totalDragY)
 
-                                    when {
-                                        absX > absY && totalDragX > 120f -> { swipeDirection = -1; onPrevious() }
-                                        absX > absY && totalDragX < -120f -> { swipeDirection = 1; onNext() }
-                                        absY > absX && totalDragY < -120f -> {
-                                            onShowLyrics()
-                                            onUserInteraction()
+                                    coroutineScope.launch {
+                                        when {
+                                            absX > absY && totalDragX > 120f -> {
+                                                swipeDirection = -1
+                                                dragOffsetX.snapTo(0f)
+                                                dragOffsetY.snapTo(0f)
+                                                onPrevious()
+                                            }
+                                            absX > absY && totalDragX < -120f -> {
+                                                swipeDirection = 1
+                                                dragOffsetX.snapTo(0f)
+                                                dragOffsetY.snapTo(0f)
+                                                onNext()
+                                            }
+                                            absY > absX && totalDragY < -120f -> {
+                                                dragOffsetX.snapTo(0f)
+                                                dragOffsetY.snapTo(0f)
+                                                onShowLyrics()
+                                                onUserInteraction()
+                                            }
+                                            absY > absX && totalDragY > 170f -> {
+                                                dragOffsetX.snapTo(0f)
+                                                dragOffsetY.snapTo(0f)
+                                                onClose()
+                                            }
+                                            else -> {
+                                                launch {
+                                                    dragOffsetX.animateTo(
+                                                        0f,
+                                                        spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness = Spring.StiffnessLow
+                                                        )
+                                                    )
+                                                }
+                                                launch {
+                                                    dragOffsetY.animateTo(
+                                                        0f,
+                                                        spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness = Spring.StiffnessLow
+                                                        )
+                                                    )
+                                                }
+                                            }
                                         }
-                                        absY > absX && totalDragY > 170f -> onClose()
+                                    }
+                                },
+                                onDragCancel = {
+                                    coroutineScope.launch {
+                                        launch {
+                                            dragOffsetX.animateTo(
+                                                0f,
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessLow
+                                                )
+                                            )
+                                        }
+                                        launch {
+                                            dragOffsetY.animateTo(
+                                                0f,
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessLow
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                             ) { change, dragAmount ->
@@ -178,6 +252,10 @@ fun FullPlayerCoverArt(
                                 onUserInteraction()
                                 totalDragX += dragAmount.x
                                 totalDragY += dragAmount.y
+                                coroutineScope.launch {
+                                    dragOffsetX.snapTo(totalDragX)
+                                    dragOffsetY.snapTo(totalDragY)
+                                }
                             }
                         }
                         .pointerInput(Unit) {
@@ -205,7 +283,7 @@ fun FullPlayerCoverArt(
                     with(sharedTransitionScope) {
                         if (currentSong.coverUrl != null) {
                             AsyncImage(
-                                model = buildCoverRequest(LocalContext.current, currentSong.coverUrl),
+                                model = buildCoverRequest(LocalContext.current, currentSong.coverUrl, maxSize = 1024),
                                 contentDescription = null,
                                 contentScale       = ContentScale.Crop,
                                 modifier           = Modifier

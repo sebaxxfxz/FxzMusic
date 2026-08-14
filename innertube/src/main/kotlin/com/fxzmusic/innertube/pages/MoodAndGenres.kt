@@ -1,14 +1,20 @@
 package com.fxzmusic.innertube.pages
 
+import androidx.compose.runtime.Immutable
 import com.fxzmusic.innertube.models.BrowseEndpoint
 import com.fxzmusic.innertube.models.GridRenderer
 import com.fxzmusic.innertube.models.MusicNavigationButtonRenderer
 import com.fxzmusic.innertube.models.SectionListRenderer
+import kotlinx.serialization.Serializable
 
+@Immutable
+@Serializable
 data class MoodAndGenres(
     val title: String,
     val items: List<Item>,
 ) {
+    @Immutable
+    @Serializable
     data class Item(
         val title: String,
         val stripeColor: Long,

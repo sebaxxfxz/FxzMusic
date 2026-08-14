@@ -1,6 +1,5 @@
 package com.fxzmusic.app.ui.components
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -28,7 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.fxzmusic.app.util.buildCoverRequest
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -37,17 +36,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,12 +52,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
 import com.fxzmusic.innertube.models.AlbumItem
 import com.fxzmusic.innertube.models.ArtistItem
 import com.fxzmusic.innertube.models.PlaylistItem
 import com.fxzmusic.innertube.models.SongItem
-import com.fxzmusic.app.ui.screens.ShimmerBox
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -72,7 +67,6 @@ fun YouTubeSongCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
-    var imageLoaded by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.97f else 1f,
@@ -109,42 +103,18 @@ fun YouTubeSongCard(
             ) {
                 if (song.thumbnail.isNotEmpty()) {
                     AsyncImage(
-                        model = buildCoverRequest(LocalContext.current, song.thumbnail),
+                        model = buildCoverRequest(LocalContext.current, song.thumbnail, maxSize = 192),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = 0f },
-                        onState = { state ->
-                            if (state is AsyncImagePainter.State.Success) imageLoaded = true
-                        }
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = ColorPainter(Color(0xFF1A1A2E))
                     )
                 } else {
-                    LaunchedEffect(Unit) { imageLoaded = true }
-                }
-                AnimatedContent(
-                    targetState = imageLoaded,
-                    label = "yt_shimmer",
-                    modifier = Modifier.fillMaxSize()
-                ) { loaded ->
-                    if (!loaded) {
-                        ShimmerBox(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(10.dp))
-                    } else {
-                        if (song.thumbnail.isNotEmpty()) {
-                            AsyncImage(
-                                model = buildCoverRequest(LocalContext.current, song.thumbnail),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                            }
-                        }
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -209,7 +179,6 @@ fun YouTubeAlbumCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
-    var imageLoaded by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.93f else 1f,
@@ -232,37 +201,18 @@ fun YouTubeAlbumCard(
         ) {
             if (album.thumbnail.isNotEmpty()) {
                 AsyncImage(
-                    model = buildCoverRequest(LocalContext.current, album.thumbnail),
+                    model = buildCoverRequest(LocalContext.current, album.thumbnail, maxSize = 448),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = 0f },
-                    onState = { state ->
-                        if (state is AsyncImagePainter.State.Success) imageLoaded = true
-                    }
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = ColorPainter(Color(0xFF1A1A2E))
                 )
             } else {
-                LaunchedEffect(Unit) { imageLoaded = true }
-            }
-            AnimatedContent(
-                targetState = imageLoaded,
-                label = "yt_shimmer",
-                modifier = Modifier.fillMaxSize()
-            ) { loaded ->
-                if (!loaded) {
-                    ShimmerBox(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(12.dp))
-                } else {
-                    if (album.thumbnail.isNotEmpty()) {
-                        AsyncImage(
-                            model = buildCoverRequest(LocalContext.current, album.thumbnail),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
-                    }
+                Box(
+                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
                 }
             }
             Box(
@@ -310,7 +260,6 @@ fun YouTubeArtistCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
-    var imageLoaded by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.93f else 1f,
@@ -334,37 +283,18 @@ fun YouTubeArtistCard(
         ) {
             if (artist.thumbnail != null) {
                 AsyncImage(
-                    model = buildCoverRequest(LocalContext.current, artist.thumbnail),
+                    model = buildCoverRequest(LocalContext.current, artist.thumbnail, maxSize = 256),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = 0f },
-                    onState = { state ->
-                        if (state is AsyncImagePainter.State.Success) imageLoaded = true
-                    }
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = ColorPainter(Color(0xFF1A1A2E))
                 )
             } else {
-                LaunchedEffect(Unit) { imageLoaded = true }
-            }
-            AnimatedContent(
-                targetState = imageLoaded,
-                label = "yt_shimmer",
-                modifier = Modifier.fillMaxSize()
-            ) { loaded ->
-                if (!loaded) {
-                    ShimmerBox(modifier = Modifier.fillMaxSize(), shape = CircleShape)
-                } else {
-                    if (artist.thumbnail != null) {
-                        AsyncImage(
-                            model = buildCoverRequest(LocalContext.current, artist.thumbnail),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
-                    }
+                Box(
+                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
                 }
             }
         }
@@ -395,7 +325,6 @@ fun YouTubePlaylistCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
-    var imageLoaded by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.93f else 1f,
@@ -423,42 +352,18 @@ fun YouTubePlaylistCard(
         ) {
             if (playlist.thumbnail != null) {
                 AsyncImage(
-                    model = buildCoverRequest(LocalContext.current, playlist.thumbnail),
+                    model = buildCoverRequest(LocalContext.current, playlist.thumbnail, maxSize = 448),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = 0f },
-                    onState = { state ->
-                        if (state is AsyncImagePainter.State.Success) imageLoaded = true
-                    }
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = ColorPainter(Color(0xFF1A1A2E))
                 )
             } else {
-                LaunchedEffect(Unit) { imageLoaded = true }
-            }
-            AnimatedContent(
-                targetState = imageLoaded,
-                label = "yt_shimmer",
-                modifier = Modifier.fillMaxSize()
-            ) { loaded ->
-                if (!loaded) {
-                    ShimmerBox(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(12.dp))
-                } else {
-                    if (playlist.thumbnail != null) {
-                        AsyncImage(
-                            model = buildCoverRequest(LocalContext.current, playlist.thumbnail),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
-                        }
-                    }
+                Box(
+                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
                 }
             }
             Box(
@@ -507,97 +412,6 @@ fun YouTubeSectionRow(
     Column(modifier = modifier.fillMaxWidth()) {
         SectionHeader(title = title)
         content()
-    }
-}
-
-@Composable
-fun YouTubeHeroCard(
-    title: String,
-    subtitle: String,
-    thumbnailUrl: String?,
-    badge: String? = null,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val isPressed by interaction.collectIsPressedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
-        label = "yt_hero_scale"
-    )
-
-    GlassCard(
-        modifier = modifier
-            .height(200.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (thumbnailUrl != null) {
-                AsyncImage(
-                    model = buildCoverRequest(LocalContext.current, thumbnailUrl),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.3f),
-                                Color.Black.copy(alpha = 0.85f)
-                            )
-                        )
-                    )
-            )
-            if (badge != null) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(14.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        badge,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.sp
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    title,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    subtitle,
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
     }
 }
 
@@ -686,7 +500,7 @@ fun YouTubeSectionHeaderMejorado(
         }
         if (showArrow) {
             Icon(
-                Icons.Filled.ArrowForward,
+                Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)

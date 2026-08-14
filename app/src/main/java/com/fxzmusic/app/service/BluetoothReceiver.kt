@@ -43,11 +43,15 @@ class BluetoothReceiver : BroadcastReceiver() {
             )
         }
 
+        val settingsPrefs = context.getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
+        val autoCarMode = settingsPrefs.getBoolean("car_mode_auto_bt", false)
+        val actionExtra = if (autoCarMode) "open_car_mode" else "open_player"
+
         val openIntent = PendingIntent.getActivity(
             context, 0,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("action", "open_player")
+                putExtra("action", actionExtra)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -97,4 +101,3 @@ class MediaButtonReceiver : BroadcastReceiver() {
         }, context.mainExecutor)
     }
 }
-

@@ -62,7 +62,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -171,7 +170,10 @@ fun Modifier.scaleOnPress(
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "scale_${type.name}"
     )
-    return this.scale(scale)
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
 }
 
 @Composable

@@ -20,8 +20,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -124,7 +123,7 @@ fun SyncScreen(
 
             item {
                 SyncStatusCard(
-                    icon = Icons.Filled.PlaylistPlay,
+                    icon = Icons.AutoMirrored.Filled.PlaylistPlay,
                     title = "Playlists guardadas",
                     status = state.playlists,
                     onClick = { viewModel.syncPlaylists() },

@@ -26,6 +26,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -33,13 +35,11 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.OutlinedTextField
@@ -1242,7 +1242,7 @@ private fun SelectionModeToolbar(
                 Icon(Icons.Filled.Add, contentDescription = "Agregar a playlist", tint = MaterialTheme.colorScheme.primary)
             }
             IconButton(onClick = onAddToQueue) {
-                Icon(Icons.Filled.QueueMusic, contentDescription = "Agregar a la cola", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Agregar a la cola", tint = MaterialTheme.colorScheme.primary)
             }
             IconButton(onClick = onShare) {
                 Icon(Icons.Filled.Share, contentDescription = "Compartir", tint = MaterialTheme.colorScheme.primary)

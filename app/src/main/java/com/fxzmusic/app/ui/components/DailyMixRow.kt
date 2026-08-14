@@ -91,7 +91,7 @@ fun DailyMixRow(
             ) {
                 if (coverUrl != null) {
                     AsyncImage(
-                        model = buildCoverRequest(LocalContext.current, coverUrl),
+                        model = buildCoverRequest(LocalContext.current, coverUrl, maxSize = 256),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

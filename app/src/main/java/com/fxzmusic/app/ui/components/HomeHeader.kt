@@ -1,12 +1,6 @@
 package com.fxzmusic.app.ui.components
 
 import android.content.Context
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,13 +27,6 @@ import java.util.Calendar
 fun HomeHeader() {
     val context = LocalContext.current
     val accent = MaterialTheme.colorScheme.primary
-    val infiniteTransition = rememberInfiniteTransition(label = "header_pulse")
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.04f,
-        targetValue = 0.12f,
-        animationSpec = infiniteRepeatable(tween(2500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "pulse"
-    )
 
     val profileName = remember {
         val prefs = context.applicationContext.getSharedPreferences("profile_prefs", Context.MODE_PRIVATE)
@@ -63,7 +49,7 @@ fun HomeHeader() {
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        accent.copy(alpha = pulse),
+                        accent.copy(alpha = 0.07f),
                         MaterialTheme.colorScheme.background
                     )
                 )

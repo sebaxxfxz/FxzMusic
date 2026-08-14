@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadService
+import androidx.media3.exoplayer.scheduler.PlatformScheduler
 import androidx.media3.exoplayer.scheduler.Scheduler
 import com.fxzmusic.app.R
 
@@ -21,7 +22,7 @@ class FxzDownloadService : DownloadService(
 
     override fun getDownloadManager(): DownloadManager = DownloadUtil.get().getDownloadManager()
 
-    override fun getScheduler(): Scheduler? = null
+    override fun getScheduler(): Scheduler = PlatformScheduler(this, 1234)
 
     override fun getForegroundNotification(
         downloads: List<Download>,

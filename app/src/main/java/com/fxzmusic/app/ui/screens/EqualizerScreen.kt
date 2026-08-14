@@ -1,10 +1,8 @@
 package com.fxzmusic.app.ui.screens
 
-import androidx.compose.foundation.Canvas
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -45,25 +43,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fxzmusic.app.R
 import com.fxzmusic.app.data.EqBand
+import com.fxzmusic.app.ui.components.FrequencyResponseCurve
 import com.fxzmusic.app.ui.components.GlassCard
 import com.fxzmusic.app.ui.components.PressScale
 import com.fxzmusic.app.ui.components.scaleOnPress
 import com.fxzmusic.app.viewmodel.EqualizerViewModel
-import kotlin.math.roundToInt
-
-import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -108,7 +99,12 @@ fun EqualizerScreen(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
-                Text("Ecualizador", color = MaterialTheme.colorScheme.onSurface, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    text = stringResource(R.string.equalizer_title),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
 
             Switch(
@@ -130,20 +126,28 @@ fun EqualizerScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             
-            InteractiveFrequencyGraph(
-                bands = profile.bands,
-                accent = accent,
-                onBandChange = { index, gainDb ->
-                    equalizerViewModel.updateBand(index, gainDb)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            )
+            Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.frequency_curve_title),
+                    color = accent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+                FrequencyResponseCurve(
+                    bands = profile.bands,
+                    accent = accent,
+                    onBandChange = { index, gainDb ->
+                        equalizerViewModel.updateBand(index, gainDb)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "PREAJUSTES FÁCILES",
+                    text = stringResource(R.string.easy_presets),
                     color = accent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -185,7 +189,7 @@ fun EqualizerScreen(
 
             Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "CONTROLES DESLIZANTES",
+                    text = stringResource(R.string.sliders_title),
                     color = accent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -203,11 +207,11 @@ fun EqualizerScreen(
                     ) {
                         profile.bands.forEach { band ->
                             val friendlyName = when {
-                                band.label.contains("60") -> "Graves (60Hz)"
-                                band.label.contains("230") -> "Medios Bajos (230Hz)"
-                                band.label.contains("910") -> "Medios (910Hz)"
-                                band.label.contains("3.6") -> "Medios Altos (3.6kHz)"
-                                band.label.contains("14") -> "Agudos (14kHz)"
+                                band.label.contains("60") || band.label.contains("32") || band.label.contains("64") -> stringResource(R.string.band_bass)
+                                band.label.contains("230") || band.label.contains("125") || band.label.contains("250") -> stringResource(R.string.band_low_mid)
+                                band.label.contains("910") || band.label.contains("500") || band.label.contains("1K") || band.label.contains("1000") -> stringResource(R.string.band_mid)
+                                band.label.contains("3.6") || band.label.contains("2K") || band.label.contains("4K") -> stringResource(R.string.band_high_mid)
+                                band.label.contains("14") || band.label.contains("8K") || band.label.contains("16K") -> stringResource(R.string.band_treble)
                                 else -> band.label
                             }
 
@@ -245,7 +249,11 @@ fun EqualizerScreen(
                         ) {
                             Icon(Icons.Filled.Save, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Guardar mi ajuste", color = accent, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = stringResource(R.string.save_my_preset),
+                                color = accent,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
 
@@ -258,7 +266,11 @@ fun EqualizerScreen(
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Restablecer / Eliminar este ajuste", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = stringResource(R.string.delete_custom_preset),
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
@@ -266,12 +278,12 @@ fun EqualizerScreen(
                     AlertDialog(
                         onDismissRequest = { showSaveDialog = false },
                         containerColor = MaterialTheme.colorScheme.surface,
-                        title = { Text("Guardar Ecualizador", fontWeight = FontWeight.Bold) },
+                        title = { Text(stringResource(R.string.save_equalizer_dialog_title), fontWeight = FontWeight.Bold) },
                         text = {
                             OutlinedTextField(
                                 value = profileName,
                                 onValueChange = { profileName = it },
-                                placeholder = { Text("Ej. Mi ajuste favorito") },
+                                placeholder = { Text(stringResource(R.string.preset_name_hint)) },
                                 singleLine = true,
                                 shape = RoundedCornerShape(12.dp)
                             )
@@ -282,137 +294,15 @@ fun EqualizerScreen(
                                 showSaveDialog = false
                                 profileName = ""
                             }) {
-                                Text("Guardar", color = accent, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.save_button), color = accent, fontWeight = FontWeight.Bold)
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showSaveDialog = false }) {
-                                Text("Cancelar", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.cancel_button), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InteractiveFrequencyGraph(
-    bands: List<EqBand>,
-    accent: Color,
-    onBandChange: (index: Int, gainDb: Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var cardSize by remember { mutableStateOf(Size.Zero) }
-
-    fun updateGainFromTouch(touchX: Float, touchY: Float) {
-        if (bands.isEmpty() || cardSize.width <= 0f || cardSize.height <= 0f) return
-        val width = cardSize.width
-        val height = cardSize.height
-        val midY = height / 2f
-
-        val bandStep = width / (bands.size - 1).coerceAtLeast(1)
-        val closestIndex = (touchX / bandStep).roundToInt().coerceIn(0, bands.size - 1)
-
-        val rawGain = ((midY - touchY) / (midY * 0.85f)) * 12f
-        val gainDb = (rawGain.coerceIn(-12f, 12f) * 2).roundToInt() / 2f
-
-        onBandChange(closestIndex, gainDb)
-    }
-
-    GlassCard(
-        modifier = modifier.height(160.dp),
-        shape = RoundedCornerShape(22.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .onGloballyPositioned {
-                        cardSize = Size(it.size.width.toFloat(), it.size.height.toFloat())
-                    }
-                    .pointerInput(bands) {
-                        detectTapGestures { offset ->
-                            updateGainFromTouch(offset.x, offset.y)
-                        }
-                    }
-                    .pointerInput(bands) {
-                        detectDragGestures { change, _ ->
-                            change.consume()
-                            updateGainFromTouch(change.position.x, change.position.y)
-                        }
-                    }
-            ) {
-                if (bands.isEmpty()) return@Canvas
-
-                val width = size.width
-                val height = size.height
-                val midY = height / 2f
-
-                drawLine(
-                    color = Color.White.copy(alpha = 0.08f),
-                    start = Offset(0f, midY),
-                    end = Offset(width, midY),
-                    strokeWidth = 1.dp.toPx()
-                )
-
-                val points = bands.mapIndexed { index, band ->
-                    val x = (index.toFloat() / (bands.size - 1).coerceAtLeast(1)) * width
-                    val normalizedGain = (band.gainDb.coerceIn(-12f, 12f) / 12f)
-                    val y = midY - (normalizedGain * (midY * 0.85f))
-                    Offset(x, y)
-                }
-
-                val path = Path()
-                val fillPath = Path()
-
-                if (points.isNotEmpty()) {
-                    path.moveTo(points.first().x, points.first().y)
-                    fillPath.moveTo(points.first().x, height)
-                    fillPath.lineTo(points.first().x, points.first().y)
-
-                    for (i in 0 until points.size - 1) {
-                        val p1 = points[i]
-                        val p2 = points[i + 1]
-                        val controlPoint1 = Offset(p1.x + (p2.x - p1.x) / 2f, p1.y)
-                        val controlPoint2 = Offset(p1.x + (p2.x - p1.x) / 2f, p2.y)
-                        path.cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p2.x, p2.y)
-                        fillPath.cubicTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, p2.x, p2.y)
-                    }
-
-                    fillPath.lineTo(points.last().x, height)
-                    fillPath.close()
-
-                    drawPath(
-                        path = fillPath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.01f))
-                        )
-                    )
-
-                    drawPath(
-                        path = path,
-                        color = accent,
-                        style = Stroke(width = 3.dp.toPx())
-                    )
-
-                    points.forEachIndexed { idx, pt ->
-                        val band = bands[idx]
-                        val isNonZero = band.gainDb != 0f
-
-                        drawCircle(
-                            color = if (isNonZero) accent.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.15f),
-                            radius = 12.dp.toPx(),
-                            center = pt
-                        )
-
-                        drawCircle(
-                            color = if (isNonZero) accent else Color.White,
-                            radius = 6.dp.toPx(),
-                            center = pt
-                        )
-                    }
                 }
             }
         }

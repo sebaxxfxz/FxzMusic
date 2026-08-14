@@ -24,6 +24,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -61,41 +66,50 @@ class LibraryViewModel : ViewModel() {
         private set
     var showAddSongsDialog by mutableStateOf(false)
 
-    val allAlbums by derivedStateOf {
-        allSongs.groupBy { it.album.ifBlank { "Unknown Album" } }
-            .map { (album, songs) ->
-                AlbumGroup(
-                    name = album,
-                    songs = songs,
-                    coverUrl = songs.firstOrNull()?.coverUrl
-                )
-            }
-            .sortedByDescending { it.songs.size }
-    }
+    val allAlbums: StateFlow<List<AlbumGroup>> = snapshotFlow { allSongs }
+        .map { songs ->
+            songs.groupBy { it.album.ifBlank { "Unknown Album" } }
+                .map { (album, albumSongs) ->
+                    AlbumGroup(
+                        name = album,
+                        songs = albumSongs,
+                        coverUrl = albumSongs.firstOrNull()?.coverUrl
+                    )
+                }
+                .sortedByDescending { it.songs.size }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val allArtists by derivedStateOf {
-        allSongs.groupBy { it.artist.ifBlank { "Unknown Artist" } }
-            .map { (artist, songs) ->
-                ArtistGroup(
-                    name = artist,
-                    songs = songs,
-                    coverUrl = songs.firstOrNull()?.coverUrl
-                )
-            }
-            .sortedByDescending { it.songs.size }
-    }
+    val allArtists: StateFlow<List<ArtistGroup>> = snapshotFlow { allSongs }
+        .map { songs ->
+            songs.groupBy { it.artist.ifBlank { "Unknown Artist" } }
+                .map { (artist, artistSongs) ->
+                    ArtistGroup(
+                        name = artist,
+                        songs = artistSongs,
+                        coverUrl = artistSongs.firstOrNull()?.coverUrl
+                    )
+                }
+                .sortedByDescending { it.songs.size }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val allFolders by derivedStateOf {
-        allSongs.filter { it.filePath.isNotBlank() }
-            .groupBy { File(it.filePath).parent ?: "Unknown" }
-            .map { (folderPath, songs) ->
-                FolderGroup(
-                    name = folderPath,
-                    songs = songs
-                )
-            }
-            .sortedByDescending { it.songs.size }
-    }
+    val allFolders: StateFlow<List<FolderGroup>> = snapshotFlow { allSongs }
+        .map { songs ->
+            songs.filter { it.filePath.isNotBlank() }
+                .groupBy { File(it.filePath).parent ?: "Unknown" }
+                .map { (folderPath, folderSongs) ->
+                    FolderGroup(
+                        name = folderPath,
+                        songs = folderSongs
+                    )
+                }
+                .sortedByDescending { it.songs.size }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     var isScanning by mutableStateOf(false)
         private set
@@ -118,10 +132,23 @@ class LibraryViewModel : ViewModel() {
     private var scanJob: Job? = null
     private var downloadObserverJob: Job? = null
     private var lastLocalSongs: List<Song> = emptyList()
+    private var currentDownloadedSongs: List<Song> = emptyList()
+    var isOfflineMode by mutableStateOf(false)
+        private set
     var blacklistedFolders: Set<String> = emptySet()
         private set
 
     private val itunesSemaphore = Semaphore(4)
+
+    private fun updateAllSongs() {
+        val downloads = currentDownloadedSongs
+        allSongs = if (isOfflineMode) {
+            val downloadIds = downloads.map { it.id }.toSet()
+            (lastLocalSongs + downloads).filter { !it.isYouTube || it.filePath.isNotEmpty() || it.id in downloadIds }.sortedBy { it.title }
+        } else {
+            (lastLocalSongs + downloads).sortedBy { it.title }
+        }
+    }
 
     fun initPrefs(context: Context) {
         appContext      = context.applicationContext
@@ -130,9 +157,27 @@ class LibraryViewModel : ViewModel() {
         blacklistedFolders = context.applicationContext
             .getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
             .getStringSet("blacklisted_folders", emptySet()) ?: emptySet()
+        isOfflineMode = context.applicationContext
+            .getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
+            .getBoolean("offline_only_mode", false)
+
         viewModelScope.launch {
             LegacyMigrationManager.migrateIfNeeded(context.applicationContext)
             loadPlaylists()
+        }
+        viewModelScope.launch {
+            EventBus.events.collect { event ->
+                when (event) {
+                    is UiEvent.OfflineModeChanged -> {
+                        isOfflineMode = event.enabled
+                        updateAllSongs()
+                    }
+                    is UiEvent.BlacklistChanged -> {
+                        updateBlacklist(event.blacklistedFolders)
+                    }
+                    else -> {}
+                }
+            }
         }
         observeDownloads()
         registerContentObserver(context.applicationContext)
@@ -157,7 +202,8 @@ class LibraryViewModel : ViewModel() {
                     )
                 }
                 withContext(Dispatchers.Main) {
-                    allSongs = (lastLocalSongs + downloadedSongs).sortedBy { it.title }
+                    currentDownloadedSongs = downloadedSongs
+                    updateAllSongs()
                     loadLikedSongs()
                 }
             }
@@ -624,7 +670,8 @@ class LibraryViewModel : ViewModel() {
 
             if (cachedSongs.isNotEmpty()) {
                 lastLocalSongs = cachedSongs
-                allSongs = (lastLocalSongs + getDownloadedSongsSync()).sortedBy { it.title }
+                currentDownloadedSongs = getDownloadedSongsSync()
+                updateAllSongs()
                 loadLikedSongs()
             }
 
@@ -637,7 +684,8 @@ class LibraryViewModel : ViewModel() {
 
             if (!allowNetworkCoverFetch) {
                 lastLocalSongs = songDataMap.values.map { buildSong(it) }
-                allSongs = (lastLocalSongs + getDownloadedSongsSync()).sortedBy { it.title }
+                currentDownloadedSongs = getDownloadedSongsSync()
+                updateAllSongs()
                 loadLikedSongs()
                 loadPlaylists()
                 refreshPlaylistSongs()
@@ -685,7 +733,8 @@ class LibraryViewModel : ViewModel() {
             (networkJobs + skippedJobs).awaitAll()
 
             lastLocalSongs = songDataMap.values.map { buildSong(it) }
-            allSongs = (lastLocalSongs + getDownloadedSongsSync()).sortedBy { it.title }
+            currentDownloadedSongs = getDownloadedSongsSync()
+            updateAllSongs()
 
             loadLikedSongs()
             loadPlaylists()

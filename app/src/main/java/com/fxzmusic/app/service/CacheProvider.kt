@@ -9,11 +9,15 @@ import java.io.File
 
 object CacheProvider {
 
-    private const val PLAYER_CACHE_MAX_BYTES = 500L * 1024 * 1024
-
     private var databaseProvider: ExoDatabaseProvider? = null
     private var playerCache: SimpleCache? = null
     private var downloadCache: SimpleCache? = null
+
+    fun getMaxCacheSizeBytes(context: Context): Long {
+        val prefs = context.getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
+        val mb = prefs.getLong("max_cache_size_mb", 512L)
+        return if (mb <= 0L) -1L else mb * 1024L * 1024L
+    }
 
     @Synchronized
     fun init(context: Context) {
@@ -21,11 +25,14 @@ object CacheProvider {
         val provider = ExoDatabaseProvider(context)
         databaseProvider = provider
 
+        val maxBytes = getMaxCacheSizeBytes(context)
+        val evictor = if (maxBytes > 0L) LeastRecentlyUsedCacheEvictor(maxBytes) else NoOpCacheEvictor()
+
         val playerDir = File(context.cacheDir, "player_cache")
         if (!playerDir.exists()) playerDir.mkdirs()
         playerCache = SimpleCache(
             playerDir,
-            LeastRecentlyUsedCacheEvictor(PLAYER_CACHE_MAX_BYTES),
+            evictor,
             provider
         )
 
@@ -36,6 +43,35 @@ object CacheProvider {
             NoOpCacheEvictor(),
             provider
         )
+    }
+
+    @Synchronized
+    fun updateMaxCacheSize(context: Context, newMaxMb: Long) {
+        val prefs = context.getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
+        prefs.edit().putLong("max_cache_size_mb", newMaxMb).apply()
+
+        val cache = playerCache ?: return
+        if (newMaxMb <= 0L) return
+
+        val maxBytes = newMaxMb * 1024L * 1024L
+        val activeMediaId = PlaybackService.exoPlayerInstance?.currentMediaItem?.mediaId
+
+        try {
+            if (cache.cacheSpace > maxBytes) {
+                val keys = cache.keys.toList()
+                for (key in keys) {
+                    if (cache.cacheSpace <= maxBytes) break
+                    if (activeMediaId != null && (key == activeMediaId || key.contains(activeMediaId))) {
+                        continue
+                    }
+                    try {
+                        cache.removeResource(key)
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("CacheProvider", "Failed to trim cache to $newMaxMb MB", e)
+        }
     }
 
     fun getPlayerCache(): SimpleCache? = playerCache

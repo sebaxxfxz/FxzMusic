@@ -11,12 +11,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Queue
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -132,7 +132,7 @@ fun YouTubeAlbumContextMenu(
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            ContextMenuItem(icon = Icons.Filled.QueueMusic, label = "Reproducir", onClick = { onPlay(); onDismiss() })
+            ContextMenuItem(icon = Icons.AutoMirrored.Filled.QueueMusic, label = "Reproducir", onClick = { onPlay(); onDismiss() })
             ContextMenuItem(icon = Icons.Filled.Shuffle, label = "Aleatorio", onClick = { onShuffle(); onDismiss() })
             ContextMenuItem(icon = Icons.Filled.Queue, label = "Agregar a la cola", onClick = { onAddToQueue(); onDismiss() })
         }
@@ -196,7 +196,7 @@ fun YouTubePlaylistContextMenu(
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            ContextMenuItem(icon = Icons.Filled.QueueMusic, label = "Reproducir", onClick = { onPlay(); onDismiss() })
+            ContextMenuItem(icon = Icons.AutoMirrored.Filled.QueueMusic, label = "Reproducir", onClick = { onPlay(); onDismiss() })
             ContextMenuItem(icon = Icons.Filled.Shuffle, label = "Aleatorio", onClick = { onShuffle(); onDismiss() })
             ContextMenuItem(icon = Icons.Filled.Queue, label = "Agregar a la cola", onClick = { onAddToQueue(); onDismiss() })
         }

@@ -1,5 +1,6 @@
 package com.fxzmusic.innertube.pages
 
+import androidx.compose.runtime.Immutable
 import com.fxzmusic.innertube.models.Album
 import com.fxzmusic.innertube.models.AlbumItem
 import com.fxzmusic.innertube.models.Artist
@@ -14,12 +15,17 @@ import com.fxzmusic.innertube.models.YTItem
 import com.fxzmusic.innertube.models.oddElements
 import com.fxzmusic.innertube.models.filterExplicit
 import com.fxzmusic.innertube.models.filterVideoSongs
+import kotlinx.serialization.Serializable
 
+@Immutable
+@Serializable
 data class HomePage(
     val chips: List<Chip>?,
     val sections: List<Section>,
     val continuation: String? = null,
 ) {
+    @Immutable
+    @Serializable
     data class Chip(
         val title: String,
         val endpoint: BrowseEndpoint?,
@@ -36,6 +42,8 @@ data class HomePage(
         }
     }
 
+    @Immutable
+    @Serializable
     data class Section(
         val title: String,
         val label: String?,

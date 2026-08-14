@@ -40,9 +40,9 @@ class PlaybackSettingsViewModel : ViewModel() {
     private var appContext: Context? = null
 
     var playbackSpeed           by mutableFloatStateOf(1.0f)
-    var sleepTimerMinutes       by mutableIntStateOf(0)
-    var sleepTimerRemainingMs   by mutableLongStateOf(0L)
-    var isSleepTimerActive      by mutableStateOf(false)
+    val sleepTimerMinutes: Int get() = com.fxzmusic.app.service.PlaybackService.sleepTimerTotalMinutes
+    val sleepTimerRemainingMs: Long get() = com.fxzmusic.app.service.PlaybackService.sleepTimerRemainingMs
+    val isSleepTimerActive: Boolean get() = com.fxzmusic.app.service.PlaybackService.isSleepTimerActive
     var customSleepTimerMinutes by mutableIntStateOf(0)
     var accentColorIndex        by mutableIntStateOf(0)
     var shakeToSkip                     by mutableStateOf(false)
@@ -56,8 +56,14 @@ class PlaybackSettingsViewModel : ViewModel() {
     var wifiOnlyCovers          by mutableStateOf(true)
     var ipVersion               by mutableStateOf(IpVersion.IPV4)
     var playerBackgroundStyle   by mutableStateOf(PlayerBackgroundStyle.DEFAULT)
+    var maxCacheSizeMb          by mutableLongStateOf(512L)
+    var offlineOnlyMode         by mutableStateOf(false)
     var themeMode               by mutableStateOf(ThemeMode.AMOLED)
         private set
+    var carModeKeepScreenOn     by mutableStateOf(true)
+    var carModeGesturesEnabled  by mutableStateOf(true)
+    var carModeAutoBluetooth    by mutableStateOf(false)
+    var isDataSaverEnabled      by mutableStateOf(false)
 
     var totalStorageSpaceGb     by mutableFloatStateOf(128f)
     var usedStorageSpaceGb      by mutableFloatStateOf(42.5f)
@@ -65,7 +71,8 @@ class PlaybackSettingsViewModel : ViewModel() {
     var blacklistedFolders by mutableStateOf<Set<String>>(emptySet())
         private set
 
-    private var sleepTimerJob: Job? = null
+    private val _carModePersistent = mutableStateOf(false)
+    val carModePersistent: Boolean get() = _carModePersistent.value
 
     fun calculateStorageSpace(context: Context) {
         try {
@@ -101,6 +108,8 @@ class PlaybackSettingsViewModel : ViewModel() {
         customSleepTimerMinutes = prefs?.getInt("custom_sleep_minutes", 0) ?: 0
         loudnessNormalization  = prefs?.getBoolean("loudness_normalization", true) ?: true
         wifiOnlyCovers         = prefs?.getBoolean("wifi_only_covers", true) ?: true
+        maxCacheSizeMb         = prefs?.getLong("max_cache_size_mb", 512L) ?: 512L
+        offlineOnlyMode        = prefs?.getBoolean("offline_only_mode", false) ?: false
         ipVersion              = try {
             IpVersion.entries.getOrElse(prefs?.getInt("ip_version", 1) ?: 1) { IpVersion.IPV4 }
         } catch (_: Exception) { IpVersion.IPV4 }
@@ -109,6 +118,11 @@ class PlaybackSettingsViewModel : ViewModel() {
             PlayerBackgroundStyle.entries.getOrElse(prefs?.getInt("player_bg_style", 0) ?: 0) { PlayerBackgroundStyle.DEFAULT }
         } catch (_: Exception) { PlayerBackgroundStyle.DEFAULT }
         themeMode              = ThemeMode.entries.getOrElse(prefs?.getInt("theme_mode", ThemeMode.entries.indexOf(ThemeMode.AMOLED)) ?: ThemeMode.entries.indexOf(ThemeMode.AMOLED)) { ThemeMode.AMOLED }
+        carModeKeepScreenOn    = prefs?.getBoolean("car_mode_keep_screen_on", true) ?: true
+        carModeGesturesEnabled = prefs?.getBoolean("car_mode_gestures", true) ?: true
+        carModeAutoBluetooth   = prefs?.getBoolean("car_mode_auto_bt", false) ?: false
+        isDataSaverEnabled     = prefs?.getBoolean("car_data_saver_mode", false) ?: false
+        _carModePersistent.value = prefs?.getBoolean("car_mode_persistent", false) ?: false
         EventBus.tryPublish(UiEvent.SpeedRestored(playbackSpeed))
         calculateStorageSpace(context)
         loadBlacklistedFolders()
@@ -159,6 +173,12 @@ class PlaybackSettingsViewModel : ViewModel() {
         prefs?.edit()?.putBoolean("shake_to_skip", shakeToSkip)?.apply()
     }
 
+    fun toggleOfflineOnlyMode() {
+        offlineOnlyMode = !offlineOnlyMode
+        prefs?.edit()?.putBoolean("offline_only_mode", offlineOnlyMode)?.apply()
+        EventBus.tryPublish(UiEvent.OfflineModeChanged(offlineOnlyMode))
+    }
+
     fun toggleDynamicColorBySong() {
         dynamicColorBySong = !dynamicColorBySong
         prefs?.edit()?.putBoolean("dynamic_color_by_song", dynamicColorBySong)?.apply()
@@ -179,46 +199,36 @@ class PlaybackSettingsViewModel : ViewModel() {
         prefs?.edit()?.putBoolean("sleep_after_track", sleepAfterTrack)?.apply()
     }
 
-    fun startSleepTimer(minutes: Int, onExpire: () -> Unit) {
-        sleepTimerJob?.cancel()
+    fun startSleepTimer(minutes: Int, onExpire: () -> Unit = {}) {
         if (minutes == 0) {
-            isSleepTimerActive    = false
-            sleepTimerRemainingMs = 0L
-            sleepTimerMinutes     = 0
+            cancelSleepTimer()
             return
         }
-        sleepTimerMinutes     = minutes
-        sleepTimerRemainingMs = minutes * 60_000L
-        isSleepTimerActive    = true
-
-        sleepTimerJob = viewModelScope.launch {
-            while (sleepTimerRemainingMs > 0) {
-                delay(1000)
-                sleepTimerRemainingMs -= 1000
-            }
-            isSleepTimerActive = false
-
+        val service = com.fxzmusic.app.service.PlaybackService.instance
+        if (service != null) {
+            service.startSleepTimer(minutes)
+        } else {
             appContext?.sendBroadcast(
-                Intent(ACTION_SLEEP_TIMER_EXPIRE)
+                Intent(com.fxzmusic.app.data.ACTION_SLEEP_TIMER_START)
                     .setPackage(appContext?.packageName)
-                    .putExtra(EXTRA_FADE_DURATION_S, fadeDurationSeconds)
+                    .putExtra(com.fxzmusic.app.data.EXTRA_SLEEP_MINUTES, minutes)
             )
-
-            val totalFadeMs = fadeDurationSeconds * 1000L + FADE_COMPLETION_BUFFER_MS
-            if (totalFadeMs > 0) delay(totalFadeMs)
-
-            onExpire()
         }
     }
 
     fun cancelSleepTimer() {
-        sleepTimerJob?.cancel()
-        isSleepTimerActive    = false
-        sleepTimerRemainingMs = 0L
-        sleepTimerMinutes     = 0
+        val service = com.fxzmusic.app.service.PlaybackService.instance
+        if (service != null) {
+            service.cancelSleepTimer()
+        } else {
+            appContext?.sendBroadcast(
+                Intent(com.fxzmusic.app.data.ACTION_SLEEP_TIMER_CANCEL)
+                    .setPackage(appContext?.packageName)
+            )
+        }
     }
 
-    fun setCustomSleepTimer(minutes: Int, onExpire: () -> Unit) {
+    fun setCustomSleepTimer(minutes: Int, onExpire: () -> Unit = {}) {
         val clamped = minutes.coerceIn(1, 360)
         customSleepTimerMinutes = clamped
         prefs?.edit()?.putInt("custom_sleep_minutes", clamped)?.apply()
@@ -276,8 +286,41 @@ class PlaybackSettingsViewModel : ViewModel() {
         prefs?.edit()?.putInt("theme_mode", ThemeMode.entries.indexOf(mode))?.apply()
     }
 
+    fun updateMaxCacheSize(mb: Long) {
+        if (maxCacheSizeMb == mb) return
+        maxCacheSizeMb = mb
+        prefs?.edit()?.putLong("max_cache_size_mb", mb)?.apply()
+        appContext?.let { com.fxzmusic.app.service.CacheProvider.updateMaxCacheSize(it, mb) }
+    }
+
+    fun toggleCarModeKeepScreenOn() {
+        carModeKeepScreenOn = !carModeKeepScreenOn
+        prefs?.edit()?.putBoolean("car_mode_keep_screen_on", carModeKeepScreenOn)?.apply()
+    }
+
+    fun toggleCarModeGesturesEnabled() {
+        carModeGesturesEnabled = !carModeGesturesEnabled
+        prefs?.edit()?.putBoolean("car_mode_gestures", carModeGesturesEnabled)?.apply()
+    }
+
+    fun toggleCarModeAutoBluetooth() {
+        carModeAutoBluetooth = !carModeAutoBluetooth
+        prefs?.edit()?.putBoolean("car_mode_auto_bt", carModeAutoBluetooth)?.apply()
+    }
+
+    fun setCarModePersistent(enabled: Boolean) {
+        if (_carModePersistent.value == enabled) return
+        _carModePersistent.value = enabled
+        prefs?.edit()?.putBoolean("car_mode_persistent", enabled)?.apply()
+    }
+
+    fun toggleDataSaver(): Boolean {
+        isDataSaverEnabled = !isDataSaverEnabled
+        prefs?.edit()?.putBoolean("car_data_saver_mode", isDataSaverEnabled)?.apply()
+        return isDataSaverEnabled
+    }
+
     override fun onCleared() {
         super.onCleared()
-        sleepTimerJob?.cancel()
     }
 }

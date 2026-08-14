@@ -18,25 +18,23 @@ fun Context.isWifiConnected(): Boolean {
     return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
 }
 
-fun String?.toHighResThumbnailUrl(): String? {
+fun String?.toHighResThumbnailUrl(maxSize: Int = 640): String? {
     if (this == null || isBlank()) return this
     if (contains("googleusercontent.com") || contains("ggpht.com")) {
         return this
-            .replace(Regex("""=w\d+-h\d+.*"""), "=w1200-h1200-p-k-no-nd")
-            .replace(Regex("""=s\d+.*"""), "=s1200")
-            .replace(Regex("""=w\d+"""), "=w1200")
+            .replace(Regex("""=w\d+-h\d+.*"""), "=w$maxSize-h$maxSize-p-k-no-nd")
+            .replace(Regex("""=s\d+.*"""), "=s$maxSize")
+            .replace(Regex("""=w\d+"""), "=w$maxSize")
     }
     return this
 }
 
-fun buildCoverRequest(context: Context, song: Song): ImageRequest {
-    val embeddedCoverPath = getEmbeddedCoverFilePath(context, song)
-    val rawCover = if (embeddedCoverPath != null) {
-        embeddedCoverPath
-    } else {
-        song.coverUrl
+fun buildCoverRequest(context: Context, song: Song, maxSize: Int = 512): ImageRequest {
+    val model: Any? = when {
+        !song.coverUrl.isNullOrBlank() -> song.coverUrl.toHighResThumbnailUrl(maxSize)
+        song.filePath.isNotBlank() -> EmbeddedCoverModel(filePath = song.filePath, songId = song.id)
+        else -> null
     }
-    val coverData = rawCover.toHighResThumbnailUrl()
 
     val wifiOnly = context.applicationContext
         .getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
@@ -49,16 +47,16 @@ fun buildCoverRequest(context: Context, song: Song): ImageRequest {
     }
 
     return ImageRequest.Builder(context)
-        .data(coverData)
+        .data(model)
         .crossfade(true)
-        .size(Size.ORIGINAL)
+        .size(maxSize)
         .networkCachePolicy(networkPolicy)
         .diskCachePolicy(CachePolicy.ENABLED)
         .memoryCachePolicy(CachePolicy.ENABLED)
         .build()
 }
 
-fun buildCoverRequest(context: Context, coverUrl: String?): ImageRequest {
+fun buildCoverRequest(context: Context, coverUrl: String?, maxSize: Int = 512): ImageRequest {
     val wifiOnly = context.applicationContext
         .getSharedPreferences("playback_settings", Context.MODE_PRIVATE)
         .getBoolean("wifi_only_covers", true)
@@ -70,46 +68,13 @@ fun buildCoverRequest(context: Context, coverUrl: String?): ImageRequest {
     }
 
     return ImageRequest.Builder(context)
-        .data(coverUrl.toHighResThumbnailUrl())
+        .data(coverUrl.toHighResThumbnailUrl(maxSize))
         .crossfade(true)
-        .size(Size.ORIGINAL)
+        .size(maxSize)
         .networkCachePolicy(networkPolicy)
         .diskCachePolicy(CachePolicy.ENABLED)
         .memoryCachePolicy(CachePolicy.ENABLED)
         .build()
 }
 
-private fun getEmbeddedCoverFilePath(context: Context, song: Song): String? {
-    val sourceFile = song.filePath.trim().takeIf { it.isNotEmpty() }?.let(::File) ?: return null
-    if (!sourceFile.exists() || !sourceFile.isFile) return null
-
-    val retriever = MediaMetadataRetriever()
-    return try {
-        retriever.setDataSource(sourceFile.absolutePath)
-        val embeddedPicture = retriever.embeddedPicture ?: return null
-        if (embeddedPicture.isEmpty()) return null
-
-        val cacheDir = File(context.cacheDir, "embedded_covers").apply { mkdirs() }
-        val safeKey = buildString {
-            append(song.id.ifBlank { sourceFile.nameWithoutExtension.ifBlank { "track" } })
-            append('_')
-            append(sourceFile.length())
-            append('_')
-            append(sourceFile.lastModified())
-        }.replace(Regex("[^A-Za-z0-9._-]"), "_")
-
-        val outFile = File(cacheDir, "$safeKey.cover")
-        if (!outFile.exists() || outFile.length() != embeddedPicture.size.toLong()) {
-            outFile.writeBytes(embeddedPicture)
-        }
-        outFile.absolutePath
-    } catch (_: Exception) {
-        null
-    } finally {
-        try {
-            retriever.release()
-        } catch (_: Exception) {
-        }
-    }
-}
 

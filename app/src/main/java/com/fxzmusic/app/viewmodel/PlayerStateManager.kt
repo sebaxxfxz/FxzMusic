@@ -25,6 +25,9 @@ class PlayerStateManager : ViewModel() {
     var tagEditorSong by mutableStateOf<Song?>(null)
         private set
 
+    var isCarModeVisible by mutableStateOf(false)
+        private set
+
     fun showMiniPlayer() {
         showMiniPlayer = true
     }
@@ -32,14 +35,25 @@ class PlayerStateManager : ViewModel() {
     fun hideMiniPlayer() {
         showMiniPlayer = false
         isFullPlayerVisible = false
+        isCarModeVisible = false
     }
 
     fun openFullPlayer() {
         isFullPlayerVisible = true
+        isCarModeVisible = false
     }
 
     fun closeFullPlayer() {
         isFullPlayerVisible = false
+    }
+
+    fun openCarMode() {
+        isCarModeVisible = true
+        isFullPlayerVisible = false
+    }
+
+    fun closeCarMode() {
+        isCarModeVisible = false
     }
 
     fun showEqualizer() {

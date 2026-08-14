@@ -9,6 +9,7 @@ sealed class UiEvent {
     data class SpeedRestored(val speed: Float) : UiEvent()
     data class BlacklistChanged(val blacklistedFolders: Set<String>) : UiEvent()
     data class SongStatsChanged(val songId: String, val playCount: Int, val lastPlayed: Long) : UiEvent()
+    data class OfflineModeChanged(val enabled: Boolean) : UiEvent()
     object LibraryRefreshRequested : UiEvent()
     object TrackEnded : UiEvent()
 }

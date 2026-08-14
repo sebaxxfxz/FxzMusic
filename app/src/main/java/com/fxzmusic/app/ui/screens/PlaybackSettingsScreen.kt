@@ -1,5 +1,6 @@
 package com.fxzmusic.app.ui.screens
 import com.fxzmusic.app.*
+import com.fxzmusic.app.R
 import com.fxzmusic.app.data.*
 import com.fxzmusic.app.viewmodel.*
 import com.fxzmusic.app.ui.components.*
@@ -13,6 +14,7 @@ import com.fxzmusic.innertube.models.IpVersion
 import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.stringResource
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -37,6 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Switch
@@ -67,6 +70,7 @@ fun PlaybackSettingsScreen(
     onPausePlayback: () -> Unit,
     onOpenEqualizer: () -> Unit = {},
     onOpenAudioFx: () -> Unit = {},
+    onOpenCarMode: () -> Unit = {},
     allSongs: List<Song> = emptyList()
 ) {
     var currentScreen by remember { mutableStateOf<SettingsScreen>(SettingsScreen.Main) }
@@ -109,6 +113,7 @@ fun PlaybackSettingsScreen(
                 onOpenTheme       = { currentScreen = SettingsScreen.Theme },
                 onOpenSound       = { currentScreen = SettingsScreen.Sound },
                 onOpenFolders     = { currentScreen = SettingsScreen.Folders },
+                onOpenCarMode     = onOpenCarMode,
                 onPausePlayback   = onPausePlayback
             )
 
@@ -137,6 +142,7 @@ private fun SettingsMainScreen(
     onOpenTheme: () -> Unit,
     onOpenSound: () -> Unit,
     onOpenFolders: () -> Unit,
+    onOpenCarMode: () -> Unit,
     onPausePlayback: () -> Unit
 ) {
     val context = LocalContext.current
@@ -233,6 +239,80 @@ private fun SettingsMainScreen(
         }
     }
 
+    var showCacheLimitDialog by remember { mutableStateOf(false) }
+
+    if (showCacheLimitDialog) {
+        val options = listOf(512L, 1024L, 2048L, 5120L, 0L)
+        Dialog(
+            onDismissRequest = { showCacheLimitDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .clip(RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        stringResource(R.string.cache_limit_dialog_title),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    options.forEach { mb ->
+                        val isSelected = settingsViewModel.maxCacheSizeMb == mb
+                        val label = when (mb) {
+                            512L -> stringResource(R.string.cache_512mb)
+                            1024L -> stringResource(R.string.cache_1gb)
+                            2048L -> stringResource(R.string.cache_2gb)
+                            5120L -> stringResource(R.string.cache_5gb)
+                            else -> stringResource(R.string.cache_unlimited)
+                        }
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) accent.copy(alpha = 0.15f) else Color.Transparent)
+                                .clickable {
+                                    settingsViewModel.updateMaxCacheSize(mb)
+                                    showCacheLimitDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) accent else MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
+                                }
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Text(label, color = MaterialTheme.colorScheme.onSurface, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    TextButton(
+                        onClick = { showCacheLimitDialog = false },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Cerrar", color = accent)
+                    }
+                }
+            }
+        }
+    }
+
     updateInfoState?.let { info ->
         UpdateDialog(
             updateInfo = info,
@@ -268,6 +348,25 @@ private fun SettingsMainScreen(
                         subtitle = "Ajustes de sonido y volumen",
                         accent = accent,
                         onClick = onOpenSound
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
+                    SettingsItemRow(
+                        icon = Icons.Filled.WifiOff,
+                        title = stringResource(R.string.offline_only_mode_title),
+                        subtitle = stringResource(R.string.offline_only_mode_subtitle),
+                        accent = accent,
+                        trailingContent = {
+                            Switch(
+                                checked = settingsViewModel.offlineOnlyMode,
+                                onCheckedChange = { settingsViewModel.toggleOfflineOnlyMode() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor  = accent,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
                     SettingsItemRow(
@@ -326,6 +425,21 @@ private fun SettingsMainScreen(
                 )
                 SettingsGroupCard {
                     StorageUsageRow(settingsViewModel = settingsViewModel, accent = accent)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
+                    val cacheSub = when (settingsViewModel.maxCacheSizeMb) {
+                        512L -> stringResource(R.string.cache_512mb)
+                        1024L -> stringResource(R.string.cache_1gb)
+                        2048L -> stringResource(R.string.cache_2gb)
+                        5120L -> stringResource(R.string.cache_5gb)
+                        else -> stringResource(R.string.cache_unlimited)
+                    }
+                    SettingsItemRow(
+                        icon = Icons.Filled.Cached,
+                        title = stringResource(R.string.cache_limit_title),
+                        subtitle = cacheSub,
+                        accent = accent,
+                        onClick = { showCacheLimitDialog = true }
+                    )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
                     SettingsItemRow(
                         icon = Icons.Filled.FolderOff,
@@ -389,6 +503,85 @@ private fun SettingsMainScreen(
                             Switch(
                                 checked = settingsViewModel.resumeOnHeadphonesConnect,
                                 onCheckedChange = { settingsViewModel.toggleResumeOnHeadphonesConnect() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor  = accent,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    stringResource(R.string.car_mode_group_title),
+                    color = accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+                SettingsGroupCard {
+                    SettingsItemRow(
+                        icon = Icons.Filled.DirectionsCar,
+                        title = stringResource(R.string.car_mode_open_button),
+                        subtitle = stringResource(R.string.car_mode_subtitle),
+                        accent = accent,
+                        onClick = onOpenCarMode
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
+                    SettingsItemRow(
+                        icon = Icons.Filled.Smartphone,
+                        title = stringResource(R.string.car_mode_keep_screen_on_title),
+                        subtitle = stringResource(R.string.car_mode_keep_screen_on_desc),
+                        accent = accent,
+                        trailingContent = {
+                            Switch(
+                                checked = settingsViewModel.carModeKeepScreenOn,
+                                onCheckedChange = { settingsViewModel.toggleCarModeKeepScreenOn() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor  = accent,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
+                    SettingsItemRow(
+                        icon = Icons.Filled.TouchApp,
+                        title = stringResource(R.string.car_mode_gestures_title),
+                        subtitle = stringResource(R.string.car_mode_gestures_desc),
+                        accent = accent,
+                        trailingContent = {
+                            Switch(
+                                checked = settingsViewModel.carModeGesturesEnabled,
+                                onCheckedChange = { settingsViewModel.toggleCarModeGesturesEnabled() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor  = accent,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 24.dp))
+                    SettingsItemRow(
+                        icon = Icons.AutoMirrored.Filled.BluetoothSearching,
+                        title = stringResource(R.string.car_mode_bluetooth_title),
+                        subtitle = stringResource(R.string.car_mode_bluetooth_desc),
+                        accent = accent,
+                        trailingContent = {
+                            Switch(
+                                checked = settingsViewModel.carModeAutoBluetooth,
+                                onCheckedChange = { settingsViewModel.toggleCarModeAutoBluetooth() },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
                                     checkedTrackColor  = accent,

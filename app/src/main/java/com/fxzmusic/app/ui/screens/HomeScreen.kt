@@ -1,6 +1,7 @@
 package com.fxzmusic.app.ui.screens
 
 import com.fxzmusic.app.*
+import com.fxzmusic.app.R
 import com.fxzmusic.app.data.*
 import com.fxzmusic.app.viewmodel.*
 import com.fxzmusic.app.ui.components.*
@@ -33,10 +34,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.fxzmusic.innertube.models.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -48,17 +53,7 @@ fun AnimatedSection(
     delayMillis: Int = 0,
     content: @Composable () -> Unit
 ) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(delayMillis.toLong())
-        visible = true
-    }
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(300)) + slideInVertically(tween(400)) { it / 4 }
-    ) {
-        content()
-    }
+    content()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,9 +94,12 @@ fun HomeScreen(
     val allSongs = libraryViewModel.allSongs
     val recentSongs = remember(allSongs) { allSongs.filter { it.lastPlayed > 0L }.sortedByDescending { it.lastPlayed }.take(10) }
     val topSongs = remember(allSongs) { allSongs.filter { it.playCount > 0 }.sortedByDescending { it.playCount }.take(15) }
-    val dailyMixes = remember(allSongs, topSongs, ytPage) { generateDailyMixes(allSongs, topSongs, ytPage) }
-    val albumCovers = remember(allSongs) { allSongs.groupBy { it.album }.map { (name, songs) -> name to songs.firstOrNull { it.coverUrl != null } }.sortedBy { it.first }.take(20) }
-    val discoveryPairs = remember(allSongs) { generateDiscoveryPairs(allSongs) }
+    val dailyMixes by produceState(
+        initialValue = emptyList<Mix>(),
+        allSongs, topSongs, ytPage
+    ) {
+        value = withContext(Dispatchers.Default) { generateDailyMixes(allSongs, topSongs, ytPage) }
+    }
     val topArtists = remember(allSongs) { allSongs.filter { it.playCount > 0 }.groupBy { it.artist }.map { (artist, songs) -> Triple(artist, songs.sumOf { it.playCount }, songs.firstOrNull { it.coverUrl != null }) }.sortedByDescending { it.second }.take(10) }
 
     val chips = ytPage?.chips
@@ -195,6 +193,8 @@ fun HomeScreen(
         }
     }
 
+    val networkStatus by youTubeViewModel.networkStatus.collectAsState()
+
     PullToRefreshBox(
         isRefreshing = libraryViewModel.isScanning || ytState is HomeUiState.Loading,
         onRefresh = { 
@@ -211,6 +211,16 @@ fun HomeScreen(
             item {
                 HomeHeader()
             }
+
+            if (libraryViewModel.isOfflineMode) {
+                item {
+                    TravelModeBanner()
+                }
+            } else if (networkStatus == com.fxzmusic.app.util.NetworkStatus.DISCONNECTED) {
+                item {
+                    OfflineBanner()
+                }
+            }
             
             item {
                 LazyRow(
@@ -225,9 +235,48 @@ fun HomeScreen(
             }
 
             if (selectedFilter in listOf(HomeFilterChip.ALL, HomeFilterChip.YOUTUBE)) {
-                if (mergedSongs.isNotEmpty()) {
+                if (similarRecommendations.isNotEmpty()) {
+                    similarRecommendations.forEachIndexed { simIndex, simRec ->
+                        if (simRec.items.isNotEmpty()) {
+                            val simSongs = simRec.items.filterIsInstance<SongItem>()
+                            val convertedSimSongs = simSongs.map { it.toSong() }
+                            item(key = "because_listened_hdr_${simRec.seedTitle}_$simIndex") {
+                                YouTubeSectionHeaderMejorado(
+                                    title = stringResource(R.string.because_you_listened_to, simRec.seedTitle)
+                                )
+                            }
+                            item(key = "because_listened_row_${simRec.seedTitle}_$simIndex") {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(simRec.items, key = { "sim_${simIndex}_${it.id}" }) { item ->
+                                        when (item) {
+                                            is SongItem -> {
+                                                YouTubeSongCard(
+                                                    song = item,
+                                                    onClick = { onPlayYouTubeSong(item.toSong(), convertedSimSongs) },
+                                                    onLongClick = { contextMenuSong = item }
+                                                )
+                                            }
+                                            is AlbumItem -> {
+                                                YouTubeAlbumCard(album = item, onClick = { onOpenAlbum(item.browseId) })
+                                            }
+                                            is ArtistItem -> {
+                                                YouTubeArtistCard(artist = item, onClick = { onOpenArtist(item.id) })
+                                            }
+                                            is PlaylistItem -> {
+                                                YouTubePlaylistCard(playlist = item, onClick = { onOpenPlaylist(item.id) })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (mergedSongs.isNotEmpty()) {
                     item {
-                        YouTubeSectionHeaderMejorado(title = "Según lo que escuchas")
+                        YouTubeSectionHeaderMejorado(title = stringResource(R.string.because_you_listened))
                     }
                     item {
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -244,7 +293,7 @@ fun HomeScreen(
 
                 if (mergedPlaylists.isNotEmpty()) {
                     item {
-                        YouTubeSectionHeaderMejorado(title = "Playlists recomendadas")
+                        YouTubeSectionHeaderMejorado(title = stringResource(R.string.android_auto_recommendations))
                     }
                     item {
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -260,20 +309,27 @@ fun HomeScreen(
                 }
                 if (ytState is HomeUiState.Error) {
                     item {
+                        val offlineMessage = if (ytState.message == "Sin conexión a Internet")
+                            stringResource(R.string.home_error_offline) else null
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("No se pudo cargar la sección de YouTube Music", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                            Text(
+                                offlineMessage ?: stringResource(R.string.home_error_generic),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center
+                            )
                             Spacer(Modifier.height(8.dp))
                             Button(onClick = { youTubeViewModel.loadHome() }) {
-                                Text("Reintentar")
+                                Text(stringResource(R.string.home_retry))
                             }
                         }
                     }
                 }
 
-                itemsIndexed(shuffledSections, key = { index, section -> "yt_section_${section.title}_$index" }) { sectionIndex, section ->
+                itemsIndexed(shuffledSections, key = { index, section -> "yt_section_${section.title}_$index" }, contentType = { _, _ -> "yt_section" }) { sectionIndex, section ->
                     Column(modifier = Modifier.padding(top = if (sectionIndex == 0) 16.dp else 24.dp)) {
                         SectionContent(
                             section = section,
@@ -295,7 +351,7 @@ fun HomeScreen(
                     }
                     item {
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            itemsIndexed(recentSongs, key = { _, song -> "rec_${song.id}" }) { _, song ->
+                            itemsIndexed(recentSongs, key = { _, song -> "rec_${song.id}" }, contentType = { _, _ -> "local_row" }) { _, song ->
                                 Box(Modifier.animateItem()) {
                                     SongCard(song = song, onClick = { onPlaySong(song); onShowFullPlayer() })
                                 }
@@ -311,23 +367,20 @@ fun HomeScreen(
                             Text("TUS MIXES DIARIOS", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                         }
                     }
-                    item {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            dailyMixes.forEach { mix ->
-                                DailyMixRow(
-                                    title = mix.name,
-                                    description = mix.description,
-                                    songList = mix.songs,
-                                    coverColors = mix.coverColor,
-                                    onPlayMix = {
-                                        val mixPlaylist = Playlist(-(100L + dailyMixes.indexOf(mix)), mix.name, mix.songs.size, mix.coverColor, "", mix.description, mix.songs)
-                                        onPlayPlaylist(mixPlaylist)
-                                        onShowFullPlayer()
-                                    },
-                                    onAddSongsToQueue = onAddSongsToQueue
-                                )
-                            }
-                        }
+                    items(dailyMixes, key = { "mix_${it.name}" }, contentType = { "mix" }) { mix ->
+                        DailyMixRow(
+                            title = mix.name,
+                            description = mix.description,
+                            songList = mix.songs,
+                            coverColors = mix.coverColor,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            onPlayMix = {
+                                val mixPlaylist = Playlist(-(100L + dailyMixes.indexOf(mix)), mix.name, mix.songs.size, mix.coverColor, "", mix.description, mix.songs)
+                                onPlayPlaylist(mixPlaylist)
+                                onShowFullPlayer()
+                            },
+                            onAddSongsToQueue = onAddSongsToQueue
+                        )
                     }
                 }
             }
@@ -340,7 +393,7 @@ fun HomeScreen(
                     item {
                         AnimatedSection(250) {
                             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                itemsIndexed(topArtists, key = { _, t -> "art_${t.first}" }) { _, (artist, _, cover) ->
+                                itemsIndexed(topArtists, key = { _, t -> "art_${t.first}" }, contentType = { _, _ -> "local_row" }) { _, (artist, _, cover) ->
                                     Box(Modifier.animateItem()) {
                                         ArtistCard(name = artist, coverUrl = cover?.coverUrl, albumArt = cover?.albumArt ?: listOf(Color.Gray, Color.Gray), onClick = {})
                                     }
@@ -396,11 +449,6 @@ data class Mix(
     val description: String,
     val coverColor: List<Color>,
     val songs: List<Song>
-)
-
-data class DiscoveryPair(
-    val first: Song,
-    val second: Song
 )
 
 fun generateDailyMixes(allSongs: List<Song>, topSongs: List<Song>, ytPage: com.fxzmusic.innertube.pages.HomePage? = null): List<Mix> {
@@ -469,16 +517,6 @@ fun generateDailyMixes(allSongs: List<Song>, topSongs: List<Song>, ytPage: com.f
     return mixes
 }
 
-fun generateDiscoveryPairs(allSongs: List<Song>): List<DiscoveryPair> {
-    if (allSongs.size < 2) return emptyList()
-    val shuffled = allSongs.shuffled()
-    val pairs = mutableListOf<DiscoveryPair>()
-    for (i in 0 until shuffled.size - 1 step 2) {
-        pairs.add(DiscoveryPair(shuffled[i], shuffled[i+1]))
-    }
-    return pairs
-}
-
 object YouTubeHomeSections {
     fun isQuickPicks(title: String?) = title?.contains("selecciones", ignoreCase = true) == true || title?.contains("picks", ignoreCase = true) == true
     fun isListenAgain(title: String?) = title?.contains("volver", ignoreCase = true) == true || title?.contains("again", ignoreCase = true) == true
@@ -505,7 +543,7 @@ fun SectionContent(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(horizontal = 20.dp)
         ) {
-            items(section.items) { item ->
+            items(section.items, key = { "${it.javaClass.simpleName}_${it.id}" }) { item ->
                 when (item) {
                     is SongItem -> {
                         YouTubeSongCard(
@@ -560,25 +598,4 @@ fun AnimatedSearchBar(
     }
 }
 
-@Composable
-fun ShimmerBox(
-    modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-) {
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val alpha by transition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "shimmer_alpha"
-    )
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Color.Gray.copy(alpha = alpha))
-    )
-}
 

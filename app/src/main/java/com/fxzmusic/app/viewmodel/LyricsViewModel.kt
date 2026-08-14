@@ -69,6 +69,9 @@ class LyricsViewModel(application: Application) : AndroidViewModel(application) 
     var currentLineIndex by mutableIntStateOf(-1)
         private set
 
+    var currentPlaybackPositionMs by mutableLongStateOf(0L)
+        private set
+
     var lyricsOffsetMs by mutableLongStateOf(0L)
         private set
 
@@ -366,19 +369,24 @@ class LyricsViewModel(application: Application) : AndroidViewModel(application) 
         if (lastSongId == songId) { lastSongId = null; lyricsState = LyricsState.Idle }
     }
 
-    fun startSync(getCurrentPositionMs: () -> Long) {
+    fun startSync(isPlayingProvider: () -> Boolean = { true }, getCurrentPositionMs: () -> Long) {
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
             while (true) {
+                if (!isPlayingProvider()) {
+                    delay(250)
+                    continue
+                }
                 val state = lyricsState
                 if (state is LyricsState.Synced) {
                     val posMs = getCurrentPositionMs() + SYNC_OFFSET_MS + lyricsOffsetMs
+                    currentPlaybackPositionMs = posMs
                     val index = state.lines.indexOfLast { it.timeMs <= posMs }
                     if (index != currentLineIndex) currentLineIndex = index
                 } else if (state is LyricsState.NotFound || state is LyricsState.Plain || state is LyricsState.Instrumental) {
                     break
                 }
-                delay(50)
+                delay(30)
             }
         }
     }
@@ -462,7 +470,7 @@ class LyricsViewModel(application: Application) : AndroidViewModel(application) 
         private const val NEGATIVE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000L
     }
 
-    fun stopSync() { syncJob?.cancel(); currentLineIndex = -1 }
+    fun stopSync() { syncJob?.cancel(); currentLineIndex = -1; currentPlaybackPositionMs = 0L }
 
     fun reset() { lyricsState = LyricsState.Idle; currentLineIndex = -1; lastSongId = null; lyricsOffsetMs = 0L; currentSongKey = null; currentVideoId = null; stopSync() }
 

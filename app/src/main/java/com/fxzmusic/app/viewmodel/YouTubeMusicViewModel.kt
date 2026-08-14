@@ -3,13 +3,17 @@ package com.fxzmusic.app.viewmodel
 import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
+import android.util.LruCache
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fxzmusic.app.data.FxzDatabase
+import com.fxzmusic.app.data.HomeCacheStore
 import com.fxzmusic.app.service.SyncUtils
+import com.fxzmusic.app.util.ConnectivityObserver
+import com.fxzmusic.app.util.NetworkStatus
 import com.fxzmusic.app.service.YouTubeMusicRepository
 import com.fxzmusic.innertube.YouTube
 import com.fxzmusic.innertube.models.AlbumItem
@@ -39,11 +43,28 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.Immutable
+import com.fxzmusic.app.data.Song
+import com.fxzmusic.app.service.toSong
+import com.fxzmusic.innertube.pages.RelatedPage
+
+@Immutable
+data class SimilarSongsUiState(
+    val seedSong: Song? = null,
+    val similarSongs: List<SongItem> = emptyList(),
+    val similarArtists: List<ArtistItem> = emptyList(),
+    val similarAlbums: List<AlbumItem> = emptyList(),
+    val isLoading: Boolean = false,
+    val isRadioLoading: Boolean = false,
+    val error: String? = null
+)
 
 data class DailyDiscoverItem(
     val seedId: String,
@@ -66,12 +87,28 @@ data class CommunityPlaylistItem(
 
 class YouTubeMusicViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val connectivity = (application as com.fxzmusic.app.FxzApplication).connectivity
+    val networkStatus: StateFlow<NetworkStatus> = connectivity.status
+
     private val repo = YouTubeMusicRepository.get()
     private val db = FxzDatabase.getInstance(application)
     private val prefs = application.getSharedPreferences("yt_music_prefs", android.content.Context.MODE_PRIVATE)
+    private val homeCacheStore = HomeCacheStore(application)
 
     private var homeCache: Pair<HomePage, Long>? = null
     private val HOME_CACHE_TTL_MS = 15 * 60 * 1000L
+
+    private val albumCache = LruCache<String, AlbumPage>(50)
+    private val playlistCache = LruCache<String, PlaylistPage>(50)
+    private val artistCache = LruCache<String, ArtistPage>(50)
+    private val similarCache = LruCache<String, RelatedPage>(50)
+    private val videoIdResolutionCache = LruCache<String, String>(150)
+
+    private val _similarSongsUiState = MutableStateFlow(SimilarSongsUiState())
+    val similarSongsUiState: StateFlow<SimilarSongsUiState> = _similarSongsUiState.asStateFlow()
+
+    private var similarSongsJob: Job? = null
+    private var songRadioJob: Job? = null
 
     var home by mutableStateOf<HomeUiState>(HomeUiState.Idle)
         private set
@@ -123,16 +160,65 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
     private var pendingContinuation: String? = null
     private var isHomeLoadingMore = false
 
-    fun loadHome(params: String? = null) {
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val diskCached = homeCacheStore.load()
+            if (diskCached != null) {
+                homeCache = diskCached to System.currentTimeMillis()
+                pendingContinuation = diskCached.continuation
+                withContext(Dispatchers.Main) {
+                    if (home is HomeUiState.Idle) {
+                        home = HomeUiState.Success(diskCached)
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadHome(params: String? = null, forceRefresh: Boolean = false) {
+        if (!connectivity.isConnected()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val diskCached = homeCacheStore.load()
+                withContext(Dispatchers.Main) {
+                    if (diskCached != null) {
+                        homeCache = diskCached to System.currentTimeMillis()
+                        pendingContinuation = diskCached.continuation
+                        home = HomeUiState.Success(diskCached)
+                    } else if (home !is HomeUiState.Success) {
+                        home = HomeUiState.Error("Sin conexión a Internet")
+                    }
+                }
+            }
+            observeConnectivityRecovery()
+            return
+        }
+
         val cached = homeCache
-        if (cached != null) {
-            home = HomeUiState.Success(cached.first)
-            if (params == lastHomeParams && System.currentTimeMillis() - cached.second < HOME_CACHE_TTL_MS) {
-                if (exploreState is ExploreUiState.Idle) loadExplore()
-                return
+        val currentHome = home
+
+        val hasCache = cached != null || currentHome is HomeUiState.Success
+        if (hasCache && !forceRefresh) {
+            if (cached != null) {
+                home = HomeUiState.Success(cached.first)
+                if (params == lastHomeParams && System.currentTimeMillis() - cached.second < HOME_CACHE_TTL_MS) {
+                    if (exploreState is ExploreUiState.Idle) loadExplore()
+                    return
+                }
             }
         } else {
             home = HomeUiState.Loading
+            viewModelScope.launch(Dispatchers.IO) {
+                val diskCached = homeCacheStore.load()
+                if (diskCached != null) {
+                    homeCache = diskCached to System.currentTimeMillis()
+                    pendingContinuation = diskCached.continuation
+                    withContext(Dispatchers.Main) {
+                        if (home !is HomeUiState.Success) {
+                            home = HomeUiState.Success(diskCached)
+                        }
+                    }
+                }
+            }
         }
 
         lastHomeParams = params
@@ -145,6 +231,7 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
                         homeCache = page to System.currentTimeMillis()
                         pendingContinuation = page.continuation
                         home = HomeUiState.Success(page)
+                        viewModelScope.launch(Dispatchers.IO) { homeCacheStore.save(page) }
                     },
                     onFailure = { err ->
                         if (home !is HomeUiState.Success) {
@@ -299,10 +386,12 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
         if (isHomeLoadingMore) return
         val continuation = pendingContinuation ?: return
         val current = home as? HomeUiState.Success ?: return
+        if (!connectivity.isConnected()) return
         isHomeLoadingMore = true
-        viewModelScope.launch {
-            runSafely { repo.home(continuation = continuation) }
-                .fold(
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runSafely { repo.home(continuation = continuation) }
+            withContext(Dispatchers.Main) {
+                result.fold(
                     onSuccess = { newPage ->
                         pendingContinuation = newPage.continuation
                         val merged = current.page.copy(
@@ -311,9 +400,10 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
                         home = HomeUiState.Success(merged)
                         homeCache = merged to System.currentTimeMillis()
                     },
-                    onFailure = {  },
+                    onFailure = { },
                 )
-            isHomeLoadingMore = false
+                isHomeLoadingMore = false
+            }
         }
     }
 
@@ -321,20 +411,32 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
 
     fun refreshHome() {
         homeCache = null
+        homeCacheStore.clear()
         pendingContinuation = null
         exploreState = ExploreUiState.Idle
         _quickPicks.value = emptyList()
         _dailyDiscover.value = emptyList()
         _similarRecommendations.value = emptyList()
         _communityPlaylists.value = emptyList()
-        loadHome(lastHomeParams)
+        loadHome(lastHomeParams, forceRefresh = true)
+    }
+
+    private var connectivityRecoveryJob: kotlinx.coroutines.Job? = null
+
+    private fun observeConnectivityRecovery() {
+        if (connectivityRecoveryJob?.isActive == true) return
+        connectivityRecoveryJob = viewModelScope.launch {
+            connectivity.status.filter { it == NetworkStatus.CONNECTED }.first()
+            if (home is HomeUiState.Error) loadHome(lastHomeParams)
+        }
     }
 
     fun toggleRandomizeHomeOrder() {
         randomizeHomeOrder = !randomizeHomeOrder
         prefs.edit().putBoolean("randomize_home_order", randomizeHomeOrder).apply()
         homeCache = null
-        loadHome(lastHomeParams)
+        homeCacheStore.clear()
+        loadHome(lastHomeParams, forceRefresh = true)
     }
 
     fun loadCharts() {
@@ -606,31 +708,70 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun openAlbum(browseId: String) {
-        detail = DetailUiState.Loading
+        val cached = albumCache.get(browseId)
+        if (cached != null) {
+            detail = DetailUiState.Album(cached)
+        } else {
+            detail = DetailUiState.Loading
+        }
         viewModelScope.launch {
-            detail = runSafely { repo.album(browseId) }.fold(
-                onSuccess = { DetailUiState.Album(it) },
-                onFailure = { DetailUiState.Error(it.message ?: "No se pudo abrir el album") },
+            val result = runSafely { repo.album(browseId) }
+            result.fold(
+                onSuccess = { page ->
+                    albumCache.put(browseId, page)
+                    detail = DetailUiState.Album(page)
+                },
+                onFailure = { err ->
+                    if (cached == null) {
+                        detail = DetailUiState.Error(err.message ?: "No se pudo abrir el album")
+                    }
+                }
             )
         }
     }
 
     fun openPlaylist(playlistId: String) {
-        detail = DetailUiState.Loading
+        val cached = playlistCache.get(playlistId)
+        if (cached != null) {
+            detail = DetailUiState.Playlist(cached)
+        } else {
+            detail = DetailUiState.Loading
+        }
         viewModelScope.launch {
-            detail = runSafely { repo.playlist(playlistId) }.fold(
-                onSuccess = { DetailUiState.Playlist(it) },
-                onFailure = { DetailUiState.Error(it.message ?: "No se pudo abrir la playlist") },
+            val result = runSafely { repo.playlist(playlistId) }
+            result.fold(
+                onSuccess = { page ->
+                    playlistCache.put(playlistId, page)
+                    detail = DetailUiState.Playlist(page)
+                },
+                onFailure = { err ->
+                    if (cached == null) {
+                        detail = DetailUiState.Error(err.message ?: "No se pudo abrir la playlist")
+                    }
+                }
             )
         }
     }
 
     fun openArtist(browseId: String) {
-        detail = DetailUiState.Loading
+        val cached = artistCache.get(browseId)
+        if (cached != null) {
+            detail = DetailUiState.Artist(cached)
+        } else {
+            detail = DetailUiState.Loading
+        }
         viewModelScope.launch {
-            detail = runSafely { repo.artist(browseId) }.fold(
-                onSuccess = { DetailUiState.Artist(it) },
-                onFailure = { DetailUiState.Error(it.message ?: "No se pudo abrir el artista") },
+            val result = runSafely { repo.artist(browseId) }
+            result.fold(
+                onSuccess = { page ->
+                    artistCache.put(browseId, page)
+                    detail = DetailUiState.Artist(page)
+                },
+                onFailure = { err ->
+                    if (cached == null) {
+                        detail = DetailUiState.Error(err.message ?: "No se pudo abrir el artista")
+                    }
+                }
             )
         }
     }
@@ -699,6 +840,201 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
     private suspend inline fun <T> runSafely(crossinline block: suspend () -> Result<T>): Result<T> =
         try { block() } catch (t: Throwable) { Result.failure(t) }
 
+    suspend fun resolveVideoIdForSong(song: Song): String? {
+        if (song.isYouTube && !song.youtubeVideoId.isNullOrBlank()) {
+            return song.youtubeVideoId
+        }
+        if (song.isYouTube && song.id.length == 11 && !song.id.contains("/")) {
+            return song.id
+        }
+        val key = "${song.title.trim().lowercase()}::${song.artist.trim().lowercase()}"
+        videoIdResolutionCache.get(key)?.let { return it }
+
+        val resolved = repo.resolveVideoIdForSong(
+            title = song.title,
+            artist = song.artist,
+            durationMs = song.duration.toLong() * 1000L
+        ).getOrNull()
+
+        if (resolved != null) {
+            videoIdResolutionCache.put(key, resolved)
+        }
+        return resolved
+    }
+
+    fun loadSimilarSongs(song: Song, forceRefresh: Boolean = false) {
+        similarSongsJob?.cancel()
+
+        val knownId = when {
+            song.isYouTube && !song.youtubeVideoId.isNullOrBlank() -> song.youtubeVideoId
+            song.isYouTube && song.id.length == 11 && !song.id.contains("/") -> song.id
+            else -> videoIdResolutionCache.get("${song.title.trim().lowercase()}::${song.artist.trim().lowercase()}")
+        }
+
+        if (knownId != null && !forceRefresh) {
+            val cached = similarCache.get(knownId)
+            if (cached != null) {
+                _similarSongsUiState.value = SimilarSongsUiState(
+                    seedSong = song,
+                    similarSongs = cached.songs,
+                    similarArtists = cached.artists,
+                    similarAlbums = cached.albums,
+                    isLoading = false,
+                    isRadioLoading = false,
+                    error = null
+                )
+                return
+            }
+        }
+
+        _similarSongsUiState.value = SimilarSongsUiState(
+            seedSong = song,
+            similarSongs = emptyList(),
+            similarArtists = emptyList(),
+            similarAlbums = emptyList(),
+            isLoading = true,
+            isRadioLoading = false,
+            error = null
+        )
+
+        similarSongsJob = viewModelScope.launch(Dispatchers.IO) {
+            val videoId = resolveVideoIdForSong(song)
+            if (videoId == null) {
+                withContext(Dispatchers.Main) {
+                    _similarSongsUiState.value = _similarSongsUiState.value.copy(
+                        isLoading = false,
+                        error = "No se pudo identificar la canción para buscar similares"
+                    )
+                }
+                return@launch
+            }
+
+            if (!forceRefresh) {
+                val cached = similarCache.get(videoId)
+                if (cached != null) {
+                    withContext(Dispatchers.Main) {
+                        _similarSongsUiState.value = SimilarSongsUiState(
+                            seedSong = song,
+                            similarSongs = cached.songs,
+                            similarArtists = cached.artists,
+                            similarAlbums = cached.albums,
+                            isLoading = false,
+                            isRadioLoading = false,
+                            error = null
+                        )
+                    }
+                    return@launch
+                }
+            }
+
+            val result = repo.getSimilarForSong(videoId)
+            withContext(Dispatchers.Main) {
+                result.fold(
+                    onSuccess = { page ->
+                        similarCache.put(videoId, page)
+                        _similarSongsUiState.value = SimilarSongsUiState(
+                            seedSong = song,
+                            similarSongs = page.songs,
+                            similarArtists = page.artists,
+                            similarAlbums = page.albums,
+                            isLoading = false,
+                            isRadioLoading = false,
+                            error = null
+                        )
+                    },
+                    onFailure = { err ->
+                        _similarSongsUiState.value = _similarSongsUiState.value.copy(
+                            isLoading = false,
+                            error = err.message ?: "Error al obtener canciones similares"
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    fun startSongRadio(
+        song: Song,
+        playImmediately: Boolean = true,
+        musicPlayerViewModel: MusicPlayerViewModel,
+        context: Context,
+        onStarted: () -> Unit = {}
+    ) {
+        songRadioJob?.cancel()
+        _similarSongsUiState.value = _similarSongsUiState.value.copy(isRadioLoading = true)
+
+        songRadioJob = viewModelScope.launch(Dispatchers.IO) {
+            val videoId = resolveVideoIdForSong(song)
+            if (videoId == null) {
+                withContext(Dispatchers.Main) {
+                    _similarSongsUiState.value = _similarSongsUiState.value.copy(
+                        isRadioLoading = false,
+                        error = "No se pudo identificar la canción para iniciar la radio"
+                    )
+                }
+                return@launch
+            }
+
+            val result = repo.getSongRadio(videoId)
+            withContext(Dispatchers.Main) {
+                result.fold(
+                    onSuccess = { songItems ->
+                        val radioSongs = songItems.map { it.toSong() }
+                        if (radioSongs.isNotEmpty()) {
+                            if (playImmediately) {
+                                val startSong = if (radioSongs.any { it.id == song.id || it.youtubeVideoId == videoId }) {
+                                    radioSongs.firstOrNull { it.id == song.id || it.youtubeVideoId == videoId } ?: song
+                                } else {
+                                    song
+                                }
+                                val queue = if (radioSongs.any { it.id == startSong.id }) radioSongs else listOf(startSong) + radioSongs
+                                musicPlayerViewModel.playSong(
+                                    song = startSong,
+                                    newPlaylist = queue,
+                                    context = context
+                                )
+                            } else {
+                                musicPlayerViewModel.appendSongsToQueue(radioSongs)
+                            }
+                            onStarted()
+                        }
+                        _similarSongsUiState.value = _similarSongsUiState.value.copy(isRadioLoading = false)
+                    },
+                    onFailure = { err ->
+                        _similarSongsUiState.value = _similarSongsUiState.value.copy(
+                            isRadioLoading = false,
+                            error = err.message ?: "Error al iniciar radio"
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    fun generateSmartRoadTripMix(
+        librarySongs: List<Song>,
+        quickPicks: List<SongItem> = emptyList()
+    ): List<Song> {
+        val pool = mutableListOf<Song>()
+
+        // 1. Favoritos de la biblioteca
+        val favorites = librarySongs.filter { it.isLiked }
+        pool.addAll(favorites)
+
+        // 2. Canciones más reproducidas
+        val topPlayed = librarySongs.sortedByDescending { it.playCount }.take(20)
+        pool.addAll(topPlayed)
+
+        // 3. Biblioteca general
+        pool.addAll(librarySongs)
+
+        // 4. Canciones streaming de YouTube Music (Quick Picks / Recomendaciones)
+        val ytSongs = quickPicks.map { it.toSong() }
+        pool.addAll(ytSongs)
+
+        return pool.distinctBy { it.id }.shuffled().take(50)
+    }
+
     fun reset() {
         home = HomeUiState.Idle
         search = SearchUiState.Idle
@@ -709,6 +1045,8 @@ class YouTubeMusicViewModel(application: Application) : AndroidViewModel(applica
         lastError = null
         searchJob?.cancel()
         suggestionsJob?.cancel()
+        similarSongsJob?.cancel()
+        songRadioJob?.cancel()
     }
 }
 

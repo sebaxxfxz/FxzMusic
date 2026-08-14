@@ -16,11 +16,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import android.content.Context
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class FxzApplication : Application() {
 
     lateinit var database: FxzDatabase
+        private set
+
+    lateinit var connectivity: com.fxzmusic.app.util.ConnectivityObserver
         private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -29,6 +33,10 @@ class FxzApplication : Application() {
         super.onCreate()
 
         database = FxzDatabase.getInstance(this)
+
+        connectivity = com.fxzmusic.app.util.ConnectivityObserver(this)
+
+        com.fxzmusic.innertube.YouTube.setCacheDirectory(File(cacheDir, "innertube_http_cache"))
 
         CacheProvider.init(this)
         CipherDeobfuscator.initialize(this)
@@ -48,6 +56,9 @@ class FxzApplication : Application() {
         }
 
         val imageLoader = ImageLoader.Builder(this)
+            .components {
+                add(com.fxzmusic.app.util.EmbeddedCoverFetcher.Factory(this@FxzApplication))
+            }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)

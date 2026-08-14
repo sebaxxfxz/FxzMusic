@@ -58,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -91,6 +92,7 @@ import com.fxzmusic.app.data.Song
 import com.fxzmusic.app.data.formatTime
 import com.fxzmusic.app.ui.components.FilterChipsRow
 import com.fxzmusic.app.ui.components.GlassCard
+import com.fxzmusic.app.ui.components.OfflineBanner
 import com.fxzmusic.app.ui.components.PressScale
 import com.fxzmusic.app.ui.components.SongPreviewOverlay
 import com.fxzmusic.app.ui.components.StaggeredItem
@@ -99,6 +101,7 @@ import com.fxzmusic.app.ui.components.YouTubeArtistCard
 import com.fxzmusic.app.ui.components.YouTubePlaylistCard
 import com.fxzmusic.app.ui.components.YouTubeSongCard
 import com.fxzmusic.app.ui.components.scaleOnPress
+import com.fxzmusic.app.util.NetworkStatus
 import com.fxzmusic.app.util.toSong
 import com.fxzmusic.app.viewmodel.LibraryViewModel
 import com.fxzmusic.app.viewmodel.SearchUiState
@@ -108,9 +111,11 @@ import com.fxzmusic.innertube.models.AlbumItem
 import com.fxzmusic.innertube.models.ArtistItem
 import com.fxzmusic.innertube.models.PlaylistItem
 import com.fxzmusic.innertube.models.SongItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class SourceFilter { TODO, LOCAL, YOUTUBE }
 private enum class LocalCategory { CANCIONES, ARTISTAS, ALBUMES }
@@ -179,20 +184,27 @@ fun SearchScreen(
     var previewSong by remember { mutableStateOf<Song?>(null) }
     var previewPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
     var previewProgress by remember { mutableFloatStateOf(0f) }
-    var isReleased by remember { mutableStateOf(false) }
     val previewScope = rememberCoroutineScope()
     var previewJob by remember { mutableStateOf<Job?>(null) }
 
-    fun startPreview(song: Song) {
+    fun stopPreview() {
         previewJob?.cancel()
-        if (!isReleased) {
-            previewPlayer?.release()
-        }
+        previewJob = null
+        val mp = previewPlayer
         previewPlayer = null
-        isReleased = false
+        previewSong = null
+        previewProgress = 0f
+        if (mp != null) {
+            runCatching { mp.stop() }
+            mp.release()
+        }
+    }
+
+    fun startPreview(song: Song) {
+        stopPreview()
         previewProgress = 0f
         previewSong = song
-        previewJob = previewScope.launch {
+        previewJob = previewScope.launch(Dispatchers.IO) {
             val mp = android.media.MediaPlayer()
             try {
                 mp.setDataSource(song.filePath)
@@ -200,38 +212,31 @@ fun SearchScreen(
                 val midpoint = (mp.duration / 2).coerceAtLeast(0)
                 mp.seekTo(midpoint)
                 mp.start()
-                previewPlayer = mp
+                withContext(Dispatchers.Main) {
+                    previewPlayer = mp
+                }
                 val startMs = System.currentTimeMillis()
                 val previewDurationMs = 5_000L
                 while (System.currentTimeMillis() - startMs < previewDurationMs && mp.isPlaying) {
-                    previewProgress = ((System.currentTimeMillis() - startMs).toFloat() / previewDurationMs).coerceIn(0f, 1f)
+                    val progress = ((System.currentTimeMillis() - startMs).toFloat() / previewDurationMs).coerceIn(0f, 1f)
+                    withContext(Dispatchers.Main) {
+                        previewProgress = progress
+                    }
                     delay(100)
                 }
             } catch (_: Exception) {
             } finally {
-                if (!isReleased) {
-                    mp.runCatching { stop() }
-                    mp.release()
-                    isReleased = true
+                runCatching { mp.stop() }
+                mp.release()
+                withContext(Dispatchers.Main) {
+                    if (previewPlayer == mp) {
+                        previewPlayer = null
+                        previewSong = null
+                        previewProgress = 0f
+                    }
                 }
-                previewPlayer = null
-                previewSong = null
-                previewProgress = 0f
             }
         }
-    }
-
-    fun stopPreview() {
-        previewJob?.cancel()
-        previewJob = null
-        if (!isReleased) {
-            previewPlayer?.runCatching { stop() }
-            previewPlayer?.release()
-            isReleased = true
-        }
-        previewPlayer = null
-        previewSong = null
-        previewProgress = 0f
     }
 
     DisposableEffect(Unit) {
@@ -248,17 +253,22 @@ fun SearchScreen(
         }
     }
 
+    val networkStatus by youTubeViewModel.networkStatus.collectAsState()
     val allSongs = libraryViewModel.allSongs
 
     var debouncedSearch by remember { mutableStateOf(searchText) }
-    LaunchedEffect(searchText) {
+    LaunchedEffect(searchText, networkStatus) {
         if (searchText.isBlank()) {
             debouncedSearch = ""
             youTubeViewModel.cancelSearch()
         } else {
             delay(200)
             debouncedSearch = searchText
-            youTubeViewModel.runSearch(searchText, selectedYtFilter)
+            if (networkStatus != NetworkStatus.DISCONNECTED) {
+                youTubeViewModel.runSearch(searchText, selectedYtFilter)
+            } else {
+                youTubeViewModel.cancelSearch()
+            }
         }
     }
 
@@ -425,6 +435,9 @@ fun SearchScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+                if (networkStatus == NetworkStatus.DISCONNECTED) {
+                    OfflineBanner()
+                }
             }
 
             if (searchText.isBlank()) {
@@ -539,7 +552,8 @@ fun SearchScreen(
                                         modifier = Modifier.padding(top = 8.dp)
                                     )
                                 }
-                                itemsIndexed(filteredSongs.take(5), key = { _, song -> "local_${song.id}" }) { index, song ->
+                                val songsToShow = if (networkStatus == NetworkStatus.DISCONNECTED) filteredSongs else filteredSongs.take(5)
+                                itemsIndexed(songsToShow, key = { _, song -> "local_${song.id}" }) { index, song ->
                                     StaggeredItem(index = index) {
                                         SearchResultItem(
                                             song = song,
@@ -551,49 +565,55 @@ fun SearchScreen(
                                 }
                             }
 
-                            item {
-                                Text(
-                                    "YOUTUBE MUSIC",
-                                    color = accent,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    modifier = Modifier.padding(top = 8.dp)
-                                )
-                            }
+                            if (networkStatus != NetworkStatus.DISCONNECTED) {
+                                item {
+                                    Text(
+                                        "YOUTUBE MUSIC",
+                                        color = accent,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
 
-                            when (val state = ytState) {
-                                is SearchUiState.Loading -> {
-                                    item {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            CircularProgressIndicator(color = accent)
+                                when (val state = ytState) {
+                                    is SearchUiState.Loading -> {
+                                        item {
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                CircularProgressIndicator(color = accent)
+                                            }
                                         }
                                     }
-                                }
-                                is SearchUiState.Success -> {
-                                    val ytSongs = state.items.filterIsInstance<SongItem>()
-                                    if (ytSongs.isEmpty()) {
-                                        item { Text("Sin resultados en YouTube", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp) }
-                                    } else {
-                                        items(ytSongs.take(10), key = { "yt_${it.id}" }) { songItem ->
-                                            YouTubeSongCard(
-                                                song = songItem,
-                                                onClick = {
-                                                    val localSong = songItem.toSong()
-                                                    val localList = ytSongs.map { it.toSong() }
-                                                    onPlayYouTubeSong(localSong, localList)
-                                                }
-                                            )
+                                    is SearchUiState.Success -> {
+                                        val ytSongs = state.items.filterIsInstance<SongItem>()
+                                        if (ytSongs.isEmpty()) {
+                                            item { Text("Sin resultados en YouTube", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp) }
+                                        } else {
+                                            items(ytSongs.take(10), key = { "yt_${it.id}" }) { songItem ->
+                                                YouTubeSongCard(
+                                                    song = songItem,
+                                                    onClick = {
+                                                        val localSong = songItem.toSong()
+                                                        val localList = ytSongs.map { it.toSong() }
+                                                        onPlayYouTubeSong(localSong, localList)
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
+                                    is SearchUiState.Error -> {
+                                        item { Text("Error al buscar en YouTube: ${state.message}", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp) }
+                                    }
+                                    else -> {}
                                 }
-                                is SearchUiState.Error -> {
-                                    item { Text("Error al buscar en YouTube: ${state.message}", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp) }
+                            } else if (filteredSongs.isEmpty()) {
+                                item {
+                                    SearchEmptyState(androidx.compose.ui.res.stringResource(com.fxzmusic.app.R.string.offline_search_empty))
                                 }
-                                else -> {}
                             }
                         }
                     }
@@ -725,47 +745,70 @@ fun SearchScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            when (val state = ytState) {
-                                is SearchUiState.Loading -> {
-                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator(color = accent)
-                                    }
-                                }
-                                is SearchUiState.Success -> {
+                            if (networkStatus == NetworkStatus.DISCONNECTED) {
+                                if (filteredSongs.isNotEmpty()) {
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize(),
                                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 120.dp),
                                         verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        items(state.items, key = { it.id }) { item ->
-                                            when (item) {
-                                                is SongItem -> YouTubeSongCard(
-                                                    song = item,
-                                                    onClick = {
-                                                        val songList = state.items.filterIsInstance<SongItem>().map { it.toSong() }
-                                                        onPlayYouTubeSong(item.toSong(), songList)
-                                                    }
-                                                )
-                                                is ArtistItem -> YouTubeArtistCard(
-                                                    artist = item,
-                                                    onClick = { onOpenArtist(item.id) }
-                                                )
-                                                is AlbumItem -> YouTubeAlbumCard(
-                                                    album = item,
-                                                    onClick = { onOpenAlbum(item.id) }
-                                                )
-                                                is PlaylistItem -> YouTubePlaylistCard(
-                                                    playlist = item,
-                                                    onClick = { onOpenPlaylist(item.id) }
+                                        itemsIndexed(filteredSongs, key = { _, song -> "yt_offline_${song.id}" }) { index, song ->
+                                            StaggeredItem(index = index) {
+                                                SearchResultItem(
+                                                    song = song,
+                                                    onClick = { onPlaySong(song) },
+                                                    onEditTags = { onEditTags(song) },
+                                                    onLongPress = { startPreview(song) }
                                                 )
                                             }
                                         }
                                     }
+                                } else {
+                                    SearchEmptyState(androidx.compose.ui.res.stringResource(com.fxzmusic.app.R.string.offline_search_empty))
                                 }
-                                is SearchUiState.Error -> {
-                                    SearchEmptyState("Error: ${state.message}")
+                            } else {
+                                when (val state = ytState) {
+                                    is SearchUiState.Loading -> {
+                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(color = accent)
+                                        }
+                                    }
+                                    is SearchUiState.Success -> {
+                                        LazyColumn(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 120.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            items(state.items, key = { it.id }) { item ->
+                                                when (item) {
+                                                    is SongItem -> YouTubeSongCard(
+                                                        song = item,
+                                                        onClick = {
+                                                            val songList = state.items.filterIsInstance<SongItem>().map { it.toSong() }
+                                                            onPlayYouTubeSong(item.toSong(), songList)
+                                                        }
+                                                    )
+                                                    is ArtistItem -> YouTubeArtistCard(
+                                                        artist = item,
+                                                        onClick = { onOpenArtist(item.id) }
+                                                    )
+                                                    is AlbumItem -> YouTubeAlbumCard(
+                                                        album = item,
+                                                        onClick = { onOpenAlbum(item.id) }
+                                                    )
+                                                    is PlaylistItem -> YouTubePlaylistCard(
+                                                        playlist = item,
+                                                        onClick = { onOpenPlaylist(item.id) }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    is SearchUiState.Error -> {
+                                        SearchEmptyState("Error: ${state.message}")
+                                    }
+                                    else -> SearchEmptyState(searchText)
                                 }
-                                else -> SearchEmptyState(searchText)
                             }
                         }
                     }

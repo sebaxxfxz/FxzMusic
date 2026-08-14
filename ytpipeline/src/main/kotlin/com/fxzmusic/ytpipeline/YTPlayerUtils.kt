@@ -262,36 +262,15 @@ object YTPlayerUtils {
 
         Timber.tag(logTag).d("Attempting to get player response using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
         PlaybackLogManager.log(PlaybackLogLevel.DEBUG, "Trying ${MAIN_CLIENT.clientName} (Main)")
-        var mainPlayerResponse = YouTube.player(videoId, playlistId, MAIN_CLIENT, signatureTimestamp.timestamp, poToken?.playerRequestPoToken).getOrThrow()
+        var mainPlayerResponse = YouTube.player(videoId, playlistId, MAIN_CLIENT, signatureTimestamp.timestamp, poToken?.playerRequestPoToken).getOrNull()
+            ?: YouTube.player(videoId, playlistId).getOrNull()
 
         var metadataResponse: PlayerResponse? = null
-        if (isLoggedIn) {
-            Timber.tag(logTag).d("Fetching metadata from METADATA_CLIENT (WEB_REMIX) for authenticated tracking")
-            try {
-                
-                var metaPoToken: PoTokenResult? = null
-                val metaSessionId = YouTube.dataSyncId
-                if (METADATA_CLIENT.useWebPoTokens && metaSessionId != null) {
-                    try {
-                        metaPoToken = poTokenGenerator.getWebClientPoToken(videoId, metaSessionId)
-                    } catch (e: Exception) {
-                        Timber.tag(logTag).e(e, "Metadata PoToken generation failed")
-                    }
-                }
-                metadataResponse = YouTube.player(
-                    videoId, playlistId, METADATA_CLIENT,
-                    signatureTimestamp.timestamp, metaPoToken?.playerRequestPoToken
-                ).getOrNull()
-                Timber.tag(logTag).d("Metadata response obtained: ${metadataResponse?.playabilityStatus?.status}")
-            } catch (e: Exception) {
-                Timber.tag(logTag).e(e, "Failed to fetch metadata from METADATA_CLIENT")
-            }
-        }
 
         var usedAgeRestrictedClient: YouTubeClient? = null
         val wasOriginallyAgeRestricted: Boolean
 
-        val mainStatus = mainPlayerResponse.playabilityStatus.status
+        val mainStatus = mainPlayerResponse?.playabilityStatus?.status ?: "ERROR"
         val isAgeRestrictedFromResponse = mainStatus in listOf(
             "AGE_CHECK_REQUIRED",
             "AGE_VERIFICATION_REQUIRED",

@@ -68,6 +68,14 @@ class InnerTube {
 
     var useLoginForBrowse: Boolean = false
 
+    var cacheDir: java.io.File? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            httpClient.close()
+            httpClient = createClient()
+        }
+
     @OptIn(ExperimentalSerializationApi::class)
     private fun createClient() = HttpClient(OkHttp) {
         expectSuccess = true
@@ -106,7 +114,8 @@ class InnerTube {
                 
                 cache(
                     okhttp3.Cache(
-                        directory = java.io.File(System.getProperty("java.io.tmpdir"), "http_cache"),
+                        directory = cacheDir?.resolve("http_cache")
+                            ?: java.io.File(System.getProperty("java.io.tmpdir"), "http_cache"),
                         maxSize = 50L * 1024L * 1024L 
                     )
                 )
@@ -185,9 +194,11 @@ class InnerTube {
         while (true) {
             try {
                 return block()
-            } catch (e: IOException) {
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is ClientRequestException) throw e
                 attempt++
-                if (attempt >= maxAttempts) throw e
+                if (attempt >= maxAttempts || (e !is IOException && e !is ServerResponseException)) throw e
                 delay(currentDelay)
                 currentDelay = (currentDelay * factor).toLong()
             }

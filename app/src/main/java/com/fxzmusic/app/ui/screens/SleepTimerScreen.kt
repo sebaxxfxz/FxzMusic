@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -383,7 +384,7 @@ fun SleepTimerScreen(
                         Box(
                             modifier = Modifier.size(36.dp).clip(CircleShape).background(accent.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Filled.VolumeDown, null, tint = accent, modifier = Modifier.size(18.dp)) }
+                        ) { Icon(Icons.AutoMirrored.Filled.VolumeDown, null, tint = accent, modifier = Modifier.size(18.dp)) }
                         Text("Fade al pausar", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
                     Text(

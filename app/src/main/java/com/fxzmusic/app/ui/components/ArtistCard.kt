@@ -1,9 +1,7 @@
 package com.fxzmusic.app.ui.components
 
-import com.fxzmusic.app.ui.screens.ShimmerBox
 import com.fxzmusic.app.util.buildCoverRequest
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -25,17 +23,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,7 +40,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
 
 @Composable
 fun ArtistCard(
@@ -55,7 +50,6 @@ fun ArtistCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val isPressed by interaction.collectIsPressedAsState()
-    var imageLoaded by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.93f else 1f,
@@ -88,45 +82,12 @@ fun ArtistCard(
         ) {
             if (coverUrl != null) {
                 AsyncImage(
-                    model = buildCoverRequest(LocalContext.current, coverUrl),
+                    model = buildCoverRequest(LocalContext.current, coverUrl, maxSize = 256),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = 0f },
-                    onState = { state ->
-                        if (state is AsyncImagePainter.State.Success) {
-                            imageLoaded = true
-                        }
-                    }
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = ColorPainter(Color.Transparent)
                 )
-            } else {
-                LaunchedEffect(Unit) { imageLoaded = true }
-            }
-            AnimatedContent(
-                targetState = imageLoaded,
-                label = "artist_shimmer_crossfade",
-                modifier = Modifier.fillMaxSize()
-            ) { loaded ->
-                if (!loaded) {
-                    ShimmerBox(modifier = Modifier.fillMaxSize(), shape = CircleShape)
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Brush.linearGradient(albumArt))
-                        )
-                        if (coverUrl != null) {
-                            AsyncImage(
-                                model = buildCoverRequest(LocalContext.current, coverUrl),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-                }
             }
             if (glowAlpha > 0f) {
                 Box(

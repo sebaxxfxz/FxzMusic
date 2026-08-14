@@ -1,7 +1,11 @@
 package com.fxzmusic.innertube.models
 
+import androidx.compose.runtime.Immutable
 import com.fxzmusic.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
+import kotlinx.serialization.Serializable
 
+@Immutable
+@Serializable
 sealed class YTItem {
     abstract val id: String
     abstract val title: String
@@ -10,16 +14,22 @@ sealed class YTItem {
     abstract val shareLink: String
 }
 
+@Immutable
+@Serializable
 data class Artist(
     val name: String,
     val id: String?,
 )
 
+@Immutable
+@Serializable
 data class Album(
     val name: String,
     val id: String,
 )
 
+@Immutable
+@Serializable
 data class SongItem(
     override val id: String,
     override val title: String,
@@ -45,6 +55,8 @@ data class SongItem(
         get() = "https://share.fxzmusic.app/watch?v=$id"
 }
 
+@Immutable
+@Serializable
 data class AlbumItem(
     val browseId: String,
     val playlistId: String,
@@ -60,6 +72,8 @@ data class AlbumItem(
         get() = "https://share.fxzmusic.app/playlist?list=$playlistId"
 }
 
+@Immutable
+@Serializable
 data class PlaylistItem(
     override val id: String,
     override val title: String,
@@ -77,6 +91,8 @@ data class PlaylistItem(
         get() = "https://share.fxzmusic.app/playlist?list=$id"
 }
 
+@Immutable
+@Serializable
 data class ArtistItem(
     override val id: String,
     override val title: String,

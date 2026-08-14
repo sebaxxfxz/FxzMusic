@@ -29,7 +29,8 @@ test_regex.kts
 skills-lock.json
 FxzMusic_/
 
-# Ignore all markdown files except README.md
+# Ignore all markdown files except important project docs
 *.md
 !README.md
+!AGENTS.md
 .kotlin/

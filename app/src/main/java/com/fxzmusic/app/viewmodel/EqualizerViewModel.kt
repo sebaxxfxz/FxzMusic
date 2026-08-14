@@ -23,9 +23,6 @@ class EqualizerViewModel : ViewModel() {
     private val gson = Gson()
     private var appContext: Context? = null
 
-    private var hardwareEq: Equalizer? = null
-    private var currentAudioSessionId = 0
-
     var isEnabled by mutableStateOf(true)
         private set
 
@@ -40,38 +37,20 @@ class EqualizerViewModel : ViewModel() {
     fun init(context: Context) {
         appContext = context.applicationContext
         prefs = context.applicationContext.getSharedPreferences("eq_prefs", Context.MODE_PRIVATE)
-        isEnabled = prefs?.getBoolean("eq_enabled", true) ?: true
+        isEnabled = prefs?.getBoolean(EXTRA_EQ_ENABLED, true) ?: true
         loadSavedProfiles()
         loadSavedProfile()
-    }
-
-    fun attachToAudioSession(sessionId: Int) {
-        if (sessionId == 0 || sessionId == currentAudioSessionId) return
-        currentAudioSessionId = sessionId
-        try {
-            hardwareEq?.release()
-            hardwareEq = Equalizer(0, sessionId).apply {
-                enabled = isEnabled
-            }
-            applyCurrentProfileToHardware()
-            hardwareEq?.let { Log.i("EqualizerViewModel", "EQ attached to session $sessionId: ${it.numberOfBands} bands") }
-        } catch (e: Exception) {
-            Log.w("EqualizerViewModel", "Failed to attach to audio session $sessionId — EQ disabled", e)
-            hardwareEq = null
-        }
     }
 
     fun toggleEnabled() {
         isEnabled = !isEnabled
         prefs?.let { it.edit { putBoolean(EXTRA_EQ_ENABLED, isEnabled) } }
-        try { hardwareEq?.enabled = isEnabled } catch (e: Exception) { Log.w("EqualizerViewModel", "Failed to toggle EQ", e) }
         notifyService()
     }
 
     fun selectProfile(profile: EqProfile) {
         currentProfile = profile
         prefs?.let { it.edit { putString(EXTRA_EQ_PROFILE, profile.id) } }
-        applyCurrentProfileToHardware()
         notifyService()
     }
 
@@ -93,7 +72,6 @@ class EqualizerViewModel : ViewModel() {
             currentProfile = updatedProfile.copy(isCustom = true)
             saveCurrentBandsAsTemp()
         }
-        applyCurrentProfileToHardware()
         notifyService()
     }
 
@@ -116,17 +94,6 @@ class EqualizerViewModel : ViewModel() {
         customProfiles = customProfiles.filter { it.id != profile.id }
         if (currentProfile.id == profile.id) selectProfile(PRESET_PROFILES.first())
         saveProfilesToPrefs()
-    }
-
-    private fun applyCurrentProfileToHardware() {
-        val eq = hardwareEq ?: return
-        if (!isEnabled) return
-        val numberOfBands = eq.numberOfBands.toInt()
-        currentProfile.bands.forEach { band ->
-            if (band.index < numberOfBands) {
-                try { eq.setBandLevel(band.index.toShort(), (band.gainDb * 100).toInt().toShort()) } catch (e: Exception) { Log.w("EqualizerViewModel", "Failed to set band ${band.index}", e) }
-            }
-        }
     }
 
     private fun saveCurrentBandsAsTemp() {
@@ -164,10 +131,5 @@ class EqualizerViewModel : ViewModel() {
     private fun loadSavedProfile() {
         val savedId = prefs?.getString(EXTRA_EQ_PROFILE, "flat") ?: "flat"
         currentProfile = allProfiles.find { it.id == savedId } ?: PRESET_PROFILES.first()
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        try { hardwareEq?.release() } catch (e: Exception) { Log.w("EqualizerViewModel", "Failed to release EQ", e) }
     }
 }
